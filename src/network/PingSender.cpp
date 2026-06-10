@@ -5,10 +5,11 @@
 #include <WiFiClient.h>
 #include <WiFiClientSecure.h>
 
-PingSender::PingSender() : appPrefs_(nullptr), lastPingMs_(0), intervalSec_(0) {}
+PingSender::PingSender() : appPrefs_(nullptr), fwVersion_(""), lastPingMs_(0), intervalSec_(0) {}
 
-void PingSender::begin(AppPreferences* appPrefs) {
+void PingSender::begin(AppPreferences* appPrefs, const char* fwVersion) {
   appPrefs_ = appPrefs;
+  fwVersion_ = fwVersion != nullptr ? fwVersion : "";
   intervalSec_ = appPrefs_->loadPingIntervalSec();
   lastPingMs_ = millis();
 }
@@ -39,6 +40,23 @@ void PingSender::tick(bool wifiConnected, bool measurementActive) {
   }
 }
 
+String PingSender::buildPingBody() const {
+  String body;
+  body.reserve(176);
+  body += "{\"type\":\"ping\",\"deviceId\":\"";
+  body += WiFi.macAddress();
+  body += "\",\"fw\":\"";
+  body += fwVersion_;
+  body += "\",\"rssi\":";
+  body += WiFi.RSSI();
+  body += ",\"uptimeSec\":";
+  body += millis() / 1000UL;
+  body += ",\"freeHeap\":";
+  body += ESP.getFreeHeap();
+  body += "}";
+  return body;
+}
+
 bool PingSender::sendPing(const String& endpoint) {
   const bool useTls = endpoint.startsWith("https://");
   HTTPClient http;
@@ -61,16 +79,16 @@ bool PingSender::sendPing(const String& endpoint) {
     return false;
   }
 
-  static const char kPingBody[] = "{\"type\":\"ping\"}";
+  const String pingBody = buildPingBody();
   http.addHeader("Content-Type", "application/json");
   http.addHeader("User-Agent", "waga-wezy-esp32");
 
   Serial.println(F("--- Ping ---"));
   Serial.print(F("POST "));
   Serial.println(endpoint);
-  Serial.println(kPingBody);
+  Serial.println(pingBody);
 
-  const int status = http.POST(kPingBody);
+  const int status = http.POST(pingBody);
   http.getString();
   http.end();
 

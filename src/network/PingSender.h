@@ -9,13 +9,15 @@ class PingSender {
  public:
   PingSender();
 
-  void begin(AppPreferences* appPrefs);
+  void begin(AppPreferences* appPrefs, const char* fwVersion);
   void tick(bool wifiConnected, bool measurementActive);
 
  private:
   bool sendPing(const String& endpoint);
+  String buildPingBody() const;
 
   AppPreferences* appPrefs_;
+  const char* fwVersion_;
   unsigned long lastPingMs_;
   uint16_t intervalSec_;
 

@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, wysyła pomiary przez WiFi na skonfigurowany endpoint HTTP(S) oraz obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.0.2`
+**Aktualna wersja firmware:** `1.0.3`
 
 ---
 
@@ -33,7 +33,7 @@ Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyśw
 - 8 przycisków: tara, OK, 6 przycisków akcji (1–6)
 - **Stałe połączenie WiFi** — urządzenie łączy się z siecią przy starcie i utrzymuje połączenie w tle
 - Wysyłka pomiarów metodą **POST JSON** na konfigurowalny endpoint
-- **Ping keepalive** — okresowy POST `{"type":"ping"}` na ten sam endpoint (domyślnie co 30 s)
+- **Ping keepalive z telemetrią** — okresowy POST z wersją firmware, RSSI, uptime i wolnym heapem (domyślnie co 30 s)
 - **Portal serwisowy** (captive portal) do konfiguracji WiFi, kalibracji, czasu i OTA
 - **Aktualizacja OTA** z GitHub Releases
 - Sygnalizacja dźwiękowa (buzzer)
@@ -235,15 +235,29 @@ Obsługiwane są adresy `http://` i `https://` (TLS bez weryfikacji certyfikatu 
 
 Mapowanie numerów przycisków po stronie backendu (POS, baza danych itd.) konfigurujesz samodzielnie — firmware nie wysyła nazw ani kodów akcji.
 
-### Ping keepalive
+### Ping keepalive z telemetrią
 
 Wysyłany okresowo na **ten sam endpoint** co pomiary (gdy WiFi połączone, brak aktywnej wysyłki pomiaru):
 
 ```json
 {
-  "type": "ping"
+  "type": "ping",
+  "deviceId": "AA:BB:CC:DD:EE:FF",
+  "fw": "1.0.3",
+  "rssi": -62,
+  "uptimeSec": 1234,
+  "freeHeap": 123456
 }
 ```
+
+| Pole | Typ | Opis |
+|------|-----|------|
+| `type` | string | Zawsze `"ping"` — odróżnia keepalive od pomiaru |
+| `deviceId` | string | Adres MAC interfejsu WiFi |
+| `fw` | string | Wersja firmware (`FW_VERSION`) |
+| `rssi` | int | Siła sygnału WiFi w dBm |
+| `uptimeSec` | int | Czas od startu urządzenia w sekundach |
+| `freeHeap` | int | Wolna pamięć heap w bajtach |
 
 | Ustawienie | Wartość |
 |------------|---------|
@@ -251,7 +265,7 @@ Wysyłany okresowo na **ten sam endpoint** co pomiary (gdy WiFi połączone, bra
 | Zakres | 0 (wyłączony), 5–3600 s |
 | Konfiguracja | Portal serwisowy → *Interwał pinga* |
 
-Backend powinien rozróżniać ping od pomiaru (np. po obecności pola `type`).
+Backend powinien rozróżniać ping od pomiaru (np. po obecności pola `type`). Telemetria może służyć do diagnostyki po stronie POS (obecność wagi, jakość sygnału, wersja firmware — np. porównanie z najnowszym wydaniem na GitHub i sygnalizacja dostępnej aktualizacji).
 
 ### Odpowiedź serwera
 
@@ -300,7 +314,7 @@ static const char* OTA_GITHUB_REPO = "WagaWeza";
 Po każdej zmianie wersji zaktualizuj stałą w `WagaWezy.ino`:
 
 ```cpp
-static const char* FW_VERSION = "1.0.2";
+static const char* FW_VERSION = "1.0.3";
 ```
 
 ---
