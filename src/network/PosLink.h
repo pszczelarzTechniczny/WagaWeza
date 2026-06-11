@@ -55,6 +55,10 @@ class PosLink {
   bool takeUpdateRequest();
 
  private:
+  static const unsigned long kReconnectFastMs = 3000;
+  static const unsigned long kReconnectSlowMs = 30000;
+  static const uint8_t kBackoffAfterFails = 3;
+
   void connectIfNeeded();
   bool parseEndpoint(const String& endpoint);
   void onEvent(WStype_t type, uint8_t* payload, size_t length);
@@ -91,6 +95,7 @@ class PosLink {
   String token_;
   String sessionPrefix_;
   uint32_t eventCounter_;
+  uint8_t failedAttempts_;
   PosAck lastAck_;
   bool updateRequested_;
 };

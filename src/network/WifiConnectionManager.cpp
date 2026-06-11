@@ -40,6 +40,9 @@ void WifiConnectionManager::startConnect() {
   }
 
   WiFi.mode(desiredMode());
+  // Waga jest zasilana z sieci — wyłączamy modem sleep: stabilniejsza sesja
+  // przy bezczynności (router rzadziej zrywa) i niższa latencja.
+  WiFi.setSleep(false);
   WiFi.begin(creds_.ssid.c_str(), creds_.password.c_str());
   connecting_ = true;
   connectStartedMs_ = millis();

@@ -81,13 +81,19 @@ void Display::showWeight(int grams, const char* clockLine, const WeightStatus* s
   }
 
   if (status != nullptr) {
-    if (!status->ws) {
-      // Brak polaczenia WS — wyrazny napis OFFLINE w negatywie zamiast ikon.
+    if (!status->wifi || !status->ws) {
+      // Zerwany lancuch polaczenia — wyrazny napis w negatywie zamiast ikon.
+      // Rozrozniamy przyczyne: brak sieci vs brak serwera POS.
       u8g2_.drawBox(70, 0, 58, 11);
       u8g2_.setDrawColor(0);
       u8g2_.setFont(u8g2_font_6x10_tf);
-      u8g2_.setCursor(73, 9);
-      u8g2_.print("OFFLINE");
+      if (!status->wifi) {
+        u8g2_.setCursor(72, 9);
+        u8g2_.print("BRAK WIFI");
+      } else {
+        u8g2_.setCursor(73, 9);
+        u8g2_.print("OFFLINE");
+      }
       u8g2_.setDrawColor(1);
     } else {
       // Gorny prawy rog: trzy kwadraciki W/S/P (pelny = polaczone).

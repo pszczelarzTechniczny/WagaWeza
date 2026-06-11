@@ -21,6 +21,7 @@ PosLink::PosLink()
       useTls_(false),
       port_(0),
       eventCounter_(0),
+      failedAttempts_(0),
       updateRequested_(false) {}
 
 void PosLink::begin(AppPreferences* appPrefs, const char* fwVersion, RtcClock* rtc) {
@@ -37,7 +38,11 @@ void PosLink::begin(AppPreferences* appPrefs, const char* fwVersion, RtcClock* r
   configValid_ = parseEndpoint(appPrefs_->loadApiEndpoint());
   token_ = appPrefs_->loadWsToken();
   ws_.onEvent(staticEvent);
-  ws_.setReconnectInterval(3000);
+  ws_.setReconnectInterval(kReconnectFastMs);
+  // Heartbeat klienta: wykrywa polaczenie "zombie" (TCP polotwarte po ubiciu
+  // sesji przez router/serwer) — bez tego sendWeight blokuje petle do 5 s
+  // na kazdej wysylce w martwy socket, a wskaznik S klamie.
+  ws_.enableHeartbeat(15000, 3000, 2);
 }
 
 bool PosLink::parseEndpoint(const String& endpoint) {
@@ -74,11 +79,14 @@ void PosLink::suspend() {
   started_ = false;
   connected_ = false;
   posOnline_ = false;
+  failedAttempts_ = 0;
   ws_.disconnect();
 }
 
 void PosLink::resume() {
   suspended_ = false;
+  failedAttempts_ = 0;
+  ws_.setReconnectInterval(kReconnectFastMs);
   configValid_ = parseEndpoint(appPrefs_->loadApiEndpoint());
   token_ = appPrefs_->loadWsToken();
 }
@@ -107,6 +115,17 @@ void PosLink::connectIfNeeded() {
 
 void PosLink::tick() {
   if (suspended_) {
+    return;
+  }
+  // Bez WiFi kazda proba TCP i tak konczy sie timeoutem (blokujacym petle) —
+  // czekamy, az WifiConnectionManager przywroci siec.
+  if (WiFi.status() != WL_CONNECTED) {
+    if (connected_) {
+      connected_ = false;
+      posOnline_ = false;
+      ++wsDisconnects_;
+      Serial.println("[ws] rozlaczono (brak WiFi)");
+    }
     return;
   }
   connectIfNeeded();
@@ -141,6 +160,8 @@ void PosLink::onEvent(WStype_t type, uint8_t* payload, size_t length) {
   switch (type) {
     case WStype_CONNECTED: {
       connected_ = true;
+      failedAttempts_ = 0;
+      ws_.setReconnectInterval(kReconnectFastMs);
       Serial.println("[ws] polaczono z POS");
       String hello = "{\"type\":\"hello\",\"role\":\"scale\",\"fw\":\"";
       hello += fwVersion_;
@@ -154,6 +175,15 @@ void PosLink::onEvent(WStype_t type, uint8_t* payload, size_t length) {
       if (connected_) {
         Serial.println("[ws] rozlaczono");
         ++wsDisconnects_;
+        failedAttempts_ = 0;
+      } else if (!suspended_) {
+        // Kolejna nieudana proba polaczenia — kazda blokuje petle do 5 s,
+        // wiec po serii porazek przechodzimy na rzadszy reconnect.
+        ++failedAttempts_;
+        if (failedAttempts_ == kBackoffAfterFails) {
+          ws_.setReconnectInterval(kReconnectSlowMs);
+          Serial.println("[ws] backoff reconnectu (30 s)");
+        }
       }
       connected_ = false;
       posOnline_ = false;
