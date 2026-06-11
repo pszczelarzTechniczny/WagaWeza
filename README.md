@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, utrzymuje stałe połączenie WebSocket z POS (POSeidon) i obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.1.1`
+**Aktualna wersja firmware:** `1.2.0`
 
 ---
 
@@ -220,12 +220,22 @@ Przycisk **Tara** ustawia offset bieżącego obciążenia (tymczasowa tara w RAM
 | Ekran powitalny | 3 linie tekstu przy starcie (max 24 znaki) |
 | WiFi | Skan sieci, zapis SSID i hasła |
 | Wysyłka danych | Endpoint URL (z niego wyprowadzany adres WS), interwał pinga, test połączenia WS |
+| Token API | Token autoryzacji WS (`?token=` na `/ws/scale`); musi być zgodny z `POS_API_TOKEN` serwera; puste = bez tokenu |
 | Tara | Zapis trwałej tary (min. 20 g obciążenia) |
 | Kalibracja | Opróżnienie wagi, kalibracja znanym obciążeniem (100–50000 g), reset HX711 |
 | Zegar DS3231 | Synchronizacja NTP (CET/CEST) lub ustawienie ręczne |
 | Reset | Usunięcie kalibracji i tary z NVS |
 | Aktualizacja OTA | Pobranie nowego firmware z GitHub |
 | Wyjście | Powrót do trybu normalnego |
+
+### Zdalna aktualizacja z POS
+
+W oknie konfiguracji wagi w POSeidonie (ikona wagi → *Aktualizuj wagę*) można
+wysłać do wagi komendę `{type:"update"}` po WebSocket. Waga — o ile nie trwa
+pomiar — sama pobierze i zainstaluje najnowszy release z GitHub **bez
+potwierdzania przyciskiem OK**, po czym się zrestartuje. Endpoint
+`POST /api/scale/update` jest objęty tokenem API serwera (`POS_API_TOKEN`),
+gdy ten jest ustawiony.
 
 ### Obsługa z wagi (bez WWW)
 
@@ -259,7 +269,7 @@ https://host[:port]/cokolwiek  →  wss://host:port/ws/scale
 #### `hello` — po nawiązaniu połączenia
 
 ```json
-{ "type": "hello", "role": "scale", "fw": "1.1.1" }
+{ "type": "hello", "role": "scale", "fw": "1.2.0" }
 ```
 
 #### `weight` — masa na żywo
@@ -296,7 +306,7 @@ Wysyłany co skonfigurowany interwał (domyślnie co 30 s):
 {
   "type": "ping",
   "deviceId": "AA:BB:CC:DD:EE:FF",
-  "fw": "1.1.1",
+  "fw": "1.2.0",
   "rssi": -62,
   "uptimeSec": 1234,
   "freeHeap": 123456
@@ -398,7 +408,7 @@ static const char* OTA_GITHUB_REPO = "WagaWeza";
 Po każdej zmianie wersji zaktualizuj stałą w `WagaWezy.ino`:
 
 ```cpp
-static const char* FW_VERSION = "1.1.1";
+static const char* FW_VERSION = "1.2.0";
 ```
 
 ---

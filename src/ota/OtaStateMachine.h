@@ -30,6 +30,8 @@ class OtaStateMachine {
              ButtonReadCallback startButtonCb);
 
   void requestStart();
+  // Start bez potwierdzania przyciskiem OK (zdalna aktualizacja z POS).
+  void requestStartAuto();
   void tick();
   bool isActive() const;
 
@@ -74,6 +76,7 @@ class OtaStateMachine {
 
   State state_;
   bool active_;
+  bool autoConfirm_;
   unsigned long stateChangedAtMs_;
   unsigned long wifiConnectStartedAtMs_;
   unsigned long noUpdateShownAtMs_;

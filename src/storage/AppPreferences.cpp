@@ -9,6 +9,7 @@ const char* AppPreferences::kWelcomeLine3Key = "welcome_l3";
 const char* AppPreferences::kApiEndpointKey = "api_endpoint";
 const char* AppPreferences::kApPinKey = "ap_pin";
 const char* AppPreferences::kPingIntervalKey = "ping_interval";
+const char* AppPreferences::kWsTokenKey = "ws_token";
 
 AppPreferences::AppPreferences() {}
 
@@ -174,6 +175,37 @@ bool AppPreferences::clearApiEndpoint() {
     return false;
   }
   prefs.remove(kApiEndpointKey);
+  prefs.end();
+  return true;
+}
+
+// Token autoryzacji WS (?token= na /ws/scale). Pusty = brak tokenu.
+String AppPreferences::loadWsToken() const {
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, true)) {
+    return "";
+  }
+  const String token = prefs.getString(kWsTokenKey, "");
+  prefs.end();
+  return token;
+}
+
+bool AppPreferences::saveWsToken(const String& token) {
+  String trimmed = token;
+  trimmed.trim();
+  if (trimmed.length() > kMaxWsTokenLen) {
+    return false;
+  }
+
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, false)) {
+    return false;
+  }
+  if (trimmed.length() == 0) {
+    prefs.remove(kWsTokenKey);
+  } else {
+    prefs.putString(kWsTokenKey, trimmed);
+  }
   prefs.end();
   return true;
 }

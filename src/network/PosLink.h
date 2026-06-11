@@ -44,6 +44,9 @@ class PosLink {
   // Jednorazowe pobranie ostatniego ack (zeruje bufor). false = brak nowego.
   bool takeAck(PosAck& out);
 
+  // Jednorazowe pobranie żądania zdalnej aktualizacji ({type:"update"} z POS).
+  bool takeUpdateRequest();
+
  private:
   void connectIfNeeded();
   bool parseEndpoint(const String& endpoint);
@@ -51,7 +54,9 @@ class PosLink {
   void handleText(const String& json);
   void sendJson(const String& json);
   String buttonJson(const String& eventId, uint8_t slot, float kg) const;
+  String wsPath() const;
   static String formatKg(float kg);
+  static String urlEncode(const String& value);
   static bool jsonFindString(const String& s, const char* key, String& out);
   static bool jsonFindBool(const String& s, const char* key, bool& out);
 
@@ -69,9 +74,11 @@ class PosLink {
   bool useTls_;
   String host_;
   uint16_t port_;
+  String token_;
   String sessionPrefix_;
   uint32_t eventCounter_;
   PosAck lastAck_;
+  bool updateRequested_;
 };
 
 #endif

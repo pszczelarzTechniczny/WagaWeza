@@ -162,6 +162,16 @@ void ServicePortal::registerRoutes() {
     }
   });
 
+  server_.on("/token/save", HTTP_POST, [this]() {
+    const String token = server_.arg("ws_token");
+    if (appPrefs_.saveWsToken(token)) {
+      server_.send(200, "text/html",
+                   resultPage("Token", "Token zapisany. Aktywny po wyjsciu z trybu serwisowego.", true));
+    } else {
+      server_.send(400, "text/html", resultPage("Blad", "Token: maks. 64 znaki.", true));
+    }
+  });
+
   server_.on("/endpoint/test", HTTP_POST, [this]() {
     if (wsTestFn_ == nullptr) {
       server_.send(500, "text/html", resultPage("Test", "Niedostepny", true));
@@ -439,8 +449,20 @@ static const char kSvcPingA[] PROGMEM = R"html(" placeholder="https://example.co
           <label class="fld"><span>Interwa&#322;</span>
             <div class="num"><input type="number" name="ping_interval" min="0" max="3600" value=")html";
 
-static const char kSvcScaleA[] PROGMEM = R"html("><span class="suf">s</span></div></label>
+static const char kSvcTokenA[] PROGMEM = R"html("><span class="suf">s</span></div></label>
           <div class="btns"><button class="bp" type="submit">Zapisz interwa&#322;</button></div>
+        </form>
+      </div>
+
+      <div class="card">
+        <h2>Token API (WebSocket)</h2>
+        <p class="note">Musi by&#263; zgodny z POS_API_TOKEN serwera. Puste pole = bez tokenu.</p>
+        <form method="POST" action="/token/save">
+          <label class="fld"><span>Token</span>
+            <input type="text" class="mono" name="ws_token" maxlength="64" value=")html";
+
+static const char kSvcScaleA[] PROGMEM = R"html("></label>
+          <div class="btns"><button class="bp" type="submit">Zapisz token</button></div>
         </form>
       </div>
     </div>
@@ -604,6 +626,8 @@ String ServicePortal::buildPage() const {
   html += escapeHtmlAttr(apiEndpoint);
   html += FPSTR(kSvcPingA);
   html += pingInterval;
+  html += FPSTR(kSvcTokenA);
+  html += escapeHtmlAttr(appPrefs_.loadWsToken());
   html += FPSTR(kSvcScaleA);
   html += defaultCal;
   html += FPSTR(kSvcClockA);

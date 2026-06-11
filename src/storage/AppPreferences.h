@@ -50,6 +50,10 @@ class AppPreferences {
   bool savePingIntervalSec(uint16_t seconds);
   static bool isValidPingIntervalSec(uint16_t seconds);
 
+  static const size_t kMaxWsTokenLen = 64;
+  String loadWsToken() const;
+  bool saveWsToken(const String& token);
+
  private:
   static const char* kNamespace;
   static const char* kSsidKey;
@@ -60,6 +64,7 @@ class AppPreferences {
   static const char* kApiEndpointKey;
   static const char* kApPinKey;
   static const char* kPingIntervalKey;
+  static const char* kWsTokenKey;
 
   static String trimWelcomeLine(const String& value);
   static String trimEndpoint(const String& value);

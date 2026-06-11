@@ -11,7 +11,8 @@ PosLink::PosLink()
       configValid_(false),
       useTls_(false),
       port_(0),
-      eventCounter_(0) {}
+      eventCounter_(0),
+      updateRequested_(false) {}
 
 void PosLink::begin(AppPreferences* appPrefs, const char* fwVersion) {
   appPrefs_ = appPrefs;
@@ -23,6 +24,7 @@ void PosLink::begin(AppPreferences* appPrefs, const char* fwVersion) {
   sessionPrefix_ = prefix;
 
   configValid_ = parseEndpoint(appPrefs_->loadApiEndpoint());
+  token_ = appPrefs_->loadWsToken();
   ws_.onEvent(staticEvent);
   ws_.setReconnectInterval(3000);
 }
@@ -67,6 +69,16 @@ void PosLink::suspend() {
 void PosLink::resume() {
   suspended_ = false;
   configValid_ = parseEndpoint(appPrefs_->loadApiEndpoint());
+  token_ = appPrefs_->loadWsToken();
+}
+
+String PosLink::wsPath() const {
+  String path = "/ws/scale";
+  if (token_.length() > 0) {
+    path += "?token=";
+    path += urlEncode(token_);
+  }
+  return path;
 }
 
 void PosLink::connectIfNeeded() {
@@ -74,10 +86,11 @@ void PosLink::connectIfNeeded() {
     return;
   }
   started_ = true;
+  const String path = wsPath();
   if (useTls_) {
-    ws_.beginSSL(host_.c_str(), port_, "/ws/scale");
+    ws_.beginSSL(host_.c_str(), port_, path.c_str());
   } else {
-    ws_.begin(host_.c_str(), port_, "/ws/scale");
+    ws_.begin(host_.c_str(), port_, path.c_str());
   }
 }
 
@@ -162,9 +175,20 @@ void PosLink::handleText(const String& json) {
     Serial.print("[ws] ack ");
     Serial.print(lastAck_.eventId);
     Serial.println(lastAck_.ok ? String(" ok") : (" blad: " + lastAck_.error));
+  } else if (type == "update") {
+    updateRequested_ = true;
+    Serial.println("[ws] zadanie aktualizacji z POS");
   } else if (type == "welcome") {
     Serial.println("[ws] welcome");
   }
+}
+
+bool PosLink::takeUpdateRequest() {
+  if (!updateRequested_) {
+    return false;
+  }
+  updateRequested_ = false;
+  return true;
 }
 
 bool PosLink::takeAck(PosAck& out) {
@@ -181,6 +205,23 @@ void PosLink::sendJson(const String& json) {
     return;
   }
   ws_.sendTXT(json.c_str());
+}
+
+String PosLink::urlEncode(const String& value) {
+  String out;
+  out.reserve(value.length() + 8);
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value[i];
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+        c == '-' || c == '_' || c == '.' || c == '~') {
+      out += c;
+    } else {
+      char buf[4];
+      snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
+      out += buf;
+    }
+  }
+  return out;
 }
 
 String PosLink::formatKg(float kg) {

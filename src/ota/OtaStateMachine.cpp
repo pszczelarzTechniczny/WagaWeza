@@ -11,6 +11,7 @@ OtaStateMachine::OtaStateMachine()
       startButtonCb_(nullptr),
       state_(STATE_IDLE),
       active_(false),
+      autoConfirm_(false),
       stateChangedAtMs_(0),
       wifiConnectStartedAtMs_(0),
       noUpdateShownAtMs_(0),
@@ -32,6 +33,16 @@ void OtaStateMachine::requestStart() {
     return;
   }
   active_ = true;
+  autoConfirm_ = false;
+  setState(STATE_ENTER);
+}
+
+void OtaStateMachine::requestStartAuto() {
+  if (active_) {
+    return;
+  }
+  active_ = true;
+  autoConfirm_ = true;
   setState(STATE_ENTER);
 }
 
@@ -178,6 +189,11 @@ void OtaStateMachine::tick() {
 
     case STATE_WAIT_START_CONFIRM: {
       String line2 = config_.currentVersion + String(" -> ") + releaseInfo_.version;
+      if (autoConfirm_) {
+        show("Aktualizacja z POS", line2.c_str(), "Start...");
+        setState(STATE_INSTALL);
+        break;
+      }
       show("Gotowe do instalacji", line2.c_str(), "Wcisnij OK");
       if (consumeStartButtonPress()) {
         setState(STATE_INSTALL);

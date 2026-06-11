@@ -29,7 +29,7 @@
 #include "src/ota/OtaStateMachine.h"
 #include "src/output/Buzzer.h"
 
-static const char* FW_VERSION = "1.1.1";
+static const char* FW_VERSION = "1.2.0";
 static const char* OTA_GITHUB_OWNER = "pszczelarzTechniczny";
 static const char* OTA_GITHUB_REPO = "WagaWeza";
 static const char* OTA_AP_NAME = "WagaWezy-Setup";
@@ -317,6 +317,26 @@ static void startOtaFromService() {
   gOta.requestStart();
 }
 
+// Zdalna aktualizacja wyzwolona z POS ({type:"update"} po WS): jak
+// startOtaFromService, ale bez portalu i bez potwierdzania przyciskiem OK.
+static void startOtaFromRemote() {
+  gPosLink.suspend();
+  gWifiManager.setApModeActive(false);
+  gOtaBlockingWifi = true;
+  gWifiManager.setEnabled(false);
+
+  if (!otaConfigComplete()) {
+    gWifiManager.setEnabled(true);
+    gOtaBlockingWifi = false;
+    gPosLink.resume();
+    gDisplay.showStatus("OTA nieaktywne", "Ustaw owner/repo", -1);
+    delay(1500);
+    return;
+  }
+  gDisplay.showTwoLines("Aktualizacja", "z POS...");
+  gOta.requestStartAuto();
+}
+
 void setup() {
   Serial.begin(115200);
   delay(100);
@@ -529,6 +549,13 @@ void loop() {
   gPingSender.tick(gPosLink, gMeasurementWorkflow.isActive());
 
   if (gMeasurementWorkflow.tick(gButtons, gScale, gStability)) {
+    return;
+  }
+
+  // Zdalna aktualizacja z POS — tylko gdy nie trwa pomiar.
+  if (gPosLink.takeUpdateRequest()) {
+    Serial.println("[ota] zdalna aktualizacja z POS");
+    startOtaFromRemote();
     return;
   }
 
