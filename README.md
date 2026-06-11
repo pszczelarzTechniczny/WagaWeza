@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, utrzymuje stałe połączenie WebSocket z POS (POSeidon) i obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.3.0`
+**Aktualna wersja firmware:** `1.3.1`
 
 ---
 
@@ -237,6 +237,12 @@ potwierdzania przyciskiem OK**, po czym się zrestartuje. Endpoint
 `POST /api/scale/update` jest objęty tokenem API serwera (`POS_API_TOKEN`),
 gdy ten jest ustawiony.
 
+**Weryfikacja po stronie wagi:** komenda niesie pole `token`. Jeśli waga ma
+ustawiony Token API w portalu serwisowym, odrzuca `update` bez zgodnego
+tokenu (ochrona przed podszyciem się pod serwer w LAN). Czyli: token na
+wadze wymaga ustawienia tego samego `POS_API_TOKEN` na serwerze — inaczej
+zdalna aktualizacja będzie odrzucana.
+
 ### Obsługa z wagi (bez WWW)
 
 Tryb serwisowy pokazuje **nawigowane menu** z ikonami (nagłówek w negatywie
@@ -269,7 +275,7 @@ https://host[:port]/cokolwiek  →  wss://host:port/ws/scale
 #### `hello` — po nawiązaniu połączenia
 
 ```json
-{ "type": "hello", "role": "scale", "fw": "1.3.0" }
+{ "type": "hello", "role": "scale", "fw": "1.3.1" }
 ```
 
 #### `weight` — masa na żywo
@@ -306,7 +312,7 @@ Wysyłany co skonfigurowany interwał (domyślnie co 30 s):
 {
   "type": "ping",
   "deviceId": "AA:BB:CC:DD:EE:FF",
-  "fw": "1.3.0",
+  "fw": "1.3.1",
   "rssi": -62,
   "uptimeSec": 1234,
   "freeHeap": 123456
@@ -408,7 +414,7 @@ static const char* OTA_GITHUB_REPO = "WagaWeza";
 Po każdej zmianie wersji zaktualizuj stałą w `WagaWezy.ino`:
 
 ```cpp
-static const char* FW_VERSION = "1.3.0";
+static const char* FW_VERSION = "1.3.1";
 ```
 
 ---

@@ -176,8 +176,16 @@ void PosLink::handleText(const String& json) {
     Serial.print(lastAck_.eventId);
     Serial.println(lastAck_.ok ? String(" ok") : (" blad: " + lastAck_.error));
   } else if (type == "update") {
-    updateRequested_ = true;
-    Serial.println("[ws] zadanie aktualizacji z POS");
+    // Gdy waga ma ustawiony token, komenda update musi go zawierac —
+    // samo polaczenie nie uwierzytelnia serwera wobec wagi.
+    String msgToken;
+    jsonFindString(json, "token", msgToken);
+    if (token_.length() > 0 && msgToken != token_) {
+      Serial.println("[ws] zadanie aktualizacji ODRZUCONE (brak/zly token)");
+    } else {
+      updateRequested_ = true;
+      Serial.println("[ws] zadanie aktualizacji z POS");
+    }
   } else if (type == "welcome") {
     Serial.println("[ws] welcome");
   }
