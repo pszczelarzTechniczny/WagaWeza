@@ -4,7 +4,8 @@
 
 #include "PosLink.h"
 
-PingSender::PingSender() : appPrefs_(nullptr), fwVersion_(""), lastPingMs_(0), intervalSec_(0) {}
+PingSender::PingSender()
+    : appPrefs_(nullptr), fwVersion_(""), lastPingMs_(0), lastIntervalCheckMs_(0), intervalSec_(0) {}
 
 void PingSender::begin(AppPreferences* appPrefs, const char* fwVersion) {
   appPrefs_ = appPrefs;
@@ -18,13 +19,19 @@ void PingSender::tick(PosLink& link, bool measurementActive) {
     return;
   }
 
-  intervalSec_ = appPrefs_->loadPingIntervalSec();
+  const unsigned long now = millis();
+
+  // Interwal z NVS odswiezany najwyzej raz na 5 s (portal mogl go zmienic) —
+  // odczyt Preferences w kazdej iteracji petli to zbedny narzut.
+  if (now - lastIntervalCheckMs_ >= 5000) {
+    lastIntervalCheckMs_ = now;
+    intervalSec_ = appPrefs_->loadPingIntervalSec();
+  }
   if (intervalSec_ == 0) {
     return;
   }
 
   const unsigned long intervalMs = static_cast<unsigned long>(intervalSec_) * 1000UL;
-  const unsigned long now = millis();
   if (now - lastPingMs_ < intervalMs) {
     return;
   }

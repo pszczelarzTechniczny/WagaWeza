@@ -50,7 +50,9 @@ bool MeasurementWorkflow::tick(InputButtons& buttons, Scale& scale,
 
   if (state_ == State::WAIT_ACK) {
     PosAck ack;
-    if (link_->takeAck(ack) && ack.eventId == eventId_) {
+    if (link_->takeAck(ack) && ack.eventId != eventId_) {
+      Serial.printf("[pomiar] ack zignorowany (stary eventId %s)\n", ack.eventId.c_str());
+    } else if (ack.received) {
       if (ack.ok) {
         char line2[24];
         snprintf(line2, sizeof(line2), "%.3f kg", kg_);

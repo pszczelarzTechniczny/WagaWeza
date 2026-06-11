@@ -19,6 +19,7 @@ class PingSender {
   AppPreferences* appPrefs_;
   String fwVersion_;
   unsigned long lastPingMs_;
+  unsigned long lastIntervalCheckMs_;
   uint16_t intervalSec_;
 };
 
