@@ -25,6 +25,9 @@ class ServicePortal {
   void clearExitRequest();
   void clearOtaRequest();
 
+  using WsTestFn = String (*)();
+  void setWsTestFn(WsTestFn fn) { wsTestFn_ = fn; }
+
  private:
   void registerRoutes();
   void scanNetworks();
@@ -45,6 +48,7 @@ class ServicePortal {
   bool exitRequested_;
   bool otaRequested_;
   String apName_;
+  WsTestFn wsTestFn_ = nullptr;
 
   static const int kMaxNetworks = 20;
   String networks_[kMaxNetworks];

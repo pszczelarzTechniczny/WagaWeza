@@ -5,23 +5,21 @@
 
 #include "../storage/AppPreferences.h"
 
+class PosLink;
+
+// Okresowa telemetria (fw, rssi, uptime, heap) po WebSocket.
 class PingSender {
  public:
   PingSender();
 
   void begin(AppPreferences* appPrefs, const char* fwVersion);
-  void tick(bool wifiConnected, bool measurementActive);
+  void tick(PosLink& link, bool measurementActive);
 
  private:
-  bool sendPing(const String& endpoint);
-  String buildPingBody() const;
-
   AppPreferences* appPrefs_;
-  const char* fwVersion_;
+  String fwVersion_;
   unsigned long lastPingMs_;
   uint16_t intervalSec_;
-
-  static const uint32_t kHttpTimeoutMs = 10000;
 };
 
 #endif

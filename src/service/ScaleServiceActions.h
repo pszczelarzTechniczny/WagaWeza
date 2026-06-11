@@ -10,9 +10,9 @@ class ScaleServiceActions {
  public:
   ScaleServiceActions(Scale& scale, ScalePreferences& prefs);
 
-  String saveTara();
-  String calibrateEmpty();
-  String calibrateWithWeight(int grams);
+  String saveTara(bool* ok = nullptr);
+  String calibrateEmpty(bool* ok = nullptr);
+  String calibrateWithWeight(int grams, bool* ok = nullptr);
   String resetHx711Default();
   String resetAll();
   int defaultCalWeightGrams() const;

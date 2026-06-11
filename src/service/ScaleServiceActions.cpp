@@ -13,7 +13,10 @@ int ScaleServiceActions::currentNetWeightGrams() const {
   return scale_.readNetGrams(scale_.runtimeTara());
 }
 
-String ScaleServiceActions::saveTara() {
+String ScaleServiceActions::saveTara(bool* ok) {
+  if (ok != nullptr) {
+    *ok = false;
+  }
   const int raw = scale_.readRawGrams();
   if (raw <= 20) {
     return "Za malo obciazenia (min. 20 g)";
@@ -26,17 +29,29 @@ String ScaleServiceActions::saveTara() {
     return "Blad zapisu tary";
   }
   scale_.applyCalibration(data);
+  if (ok != nullptr) {
+    *ok = true;
+  }
   return "Tara zapisana";
 }
 
-String ScaleServiceActions::calibrateEmpty() {
+String ScaleServiceActions::calibrateEmpty(bool* ok) {
   if (!scale_.calibrateEmpty()) {
+    if (ok != nullptr) {
+      *ok = false;
+    }
     return "Brak wagi (HX711)";
+  }
+  if (ok != nullptr) {
+    *ok = true;
   }
   return "Waga oprózniona — nałóż obciążenie wzorcowe";
 }
 
-String ScaleServiceActions::calibrateWithWeight(int grams) {
+String ScaleServiceActions::calibrateWithWeight(int grams, bool* ok) {
+  if (ok != nullptr) {
+    *ok = false;
+  }
   grams = constrain(grams, 100, Scale::kMaxWeightGrams);
 
   ScaleCalibrationData data = scale_.calibrationData();
@@ -60,6 +75,9 @@ String ScaleServiceActions::calibrateWithWeight(int grams) {
   Serial.print(net);
   Serial.println(" g");
 
+  if (ok != nullptr) {
+    *ok = true;
+  }
   return "Kalibracja OK";
 }
 

@@ -20,14 +20,16 @@
 #include "src/service/ClockServiceActions.h"
 #include "src/service/ServicePortal.h"
 #include "src/service/ServiceTimeMenu.h"
+#include "src/service/ServiceCalMenu.h"
 #include "src/network/WifiConnectionManager.h"
-#include "src/network/MeasurementSender.h"
+#include "src/network/PosLink.h"
 #include "src/network/PingSender.h"
+#include "src/scale/StabilityTracker.h"
 #include "src/workflow/MeasurementWorkflow.h"
 #include "src/ota/OtaStateMachine.h"
 #include "src/output/Buzzer.h"
 
-static const char* FW_VERSION = "1.0.4";
+static const char* FW_VERSION = "1.0.5";
 static const char* OTA_GITHUB_OWNER = "pszczelarzTechniczny";
 static const char* OTA_GITHUB_REPO = "WagaWeza";
 static const char* OTA_AP_NAME = "WagaWezy-Setup";
@@ -42,8 +44,10 @@ static ScaleServiceActions gServiceActions(gScale, gScalePrefs);
 static ClockServiceActions gClockActions(gRtc, gAppPrefs);
 static ServicePortal gServicePortal(gServiceActions, gClockActions, gAppPrefs);
 static ServiceTimeMenu gTimeMenu(gClockActions, gDisplay);
+static ServiceCalMenu gCalMenu(gServiceActions, gDisplay);
 static WifiConnectionManager gWifiManager;
-static MeasurementSender gMeasurementSender;
+static PosLink gPosLink;
+static StabilityTracker gStability;
 static PingSender gPingSender;
 static MeasurementWorkflow gMeasurementWorkflow;
 static OtaStateMachine gOta;
@@ -52,7 +56,11 @@ static Buzzer gBuzzer;
 static bool gServiceModeActive = false;
 static bool gOtaBlockingWifi = false;
 static unsigned long gTaraMsgUntilMs = 0;
+static unsigned long gOkHoldStartMs = 0;
+static unsigned long gUndoMsgUntilMs = 0;
 static unsigned long gServiceDisplayUpdatedMs = 0;
+static bool gServiceInfoActive = false;
+static unsigned long gServiceTaraHoldStartMs = 0;
 
 static void appDisplayStatus(const char* line1, const char* line2, const char* line3,
                              int progressPercent) {
@@ -110,7 +118,12 @@ static void refreshMainClockText() {
 static void processNormal() {
   refreshMainClockText();
   const int net = gScale.readNetGrams(gScale.runtimeTara());
-  gDisplay.showWeight(net, gMainClockText[0] != '\0' ? gMainClockText : nullptr);
+  WeightStatus status;
+  status.wifi = gWifiManager.isConnected();
+  status.ws = gPosLink.isConnected();
+  status.pos = gPosLink.posOnline();
+  status.stable = gStability.isStable(millis());
+  gDisplay.showWeight(net, gMainClockText[0] != '\0' ? gMainClockText : nullptr, &status);
 }
 
 static void updateServiceDisplay() {
@@ -120,23 +133,134 @@ static void updateServiceDisplay() {
   }
   gServiceDisplayUpdatedMs = now;
 
-  static bool showClockLine = false;
-  showClockLine = !showClockLine;
+  static uint8_t screen = 0;
+  screen = (screen + 1) % 3;
 
-  const String ip = WiFi.softAPIP().toString();
-  if (showClockLine) {
+  if (screen == 0) {
+    const String ip = WiFi.softAPIP().toString();
+    gDisplay.showThreeLinesLeft("Tryb serwisowy", ip.c_str(), "Tara 2s = wyjscie");
+  } else if (screen == 1) {
+    gDisplay.showThreeLinesLeft("1=test 2=info 3=czas", "4=update 5=kalibr", "6=tara");
+  } else {
     String dateLine;
     String timeLine;
     gClockActions.currentTimeLines(dateLine, timeLine);
     gDisplay.showThreeLinesLeft("Czas DS3231", dateLine.c_str(), timeLine.c_str());
-  } else {
-    gDisplay.showThreeLinesLeft("Tryb serwisowy", ip.c_str(), "Przycisk 3 = czas");
   }
+}
+
+static void showServiceInfo() {
+  char l1[24], l2[24], l3[24], l4[24], l5[24], l6[24];
+  snprintf(l1, sizeof(l1), "FW v%s", FW_VERSION);
+
+  if (WiFi.status() == WL_CONNECTED) {
+    snprintf(l2, sizeof(l2), "WiFi: %.15s", WiFi.SSID().c_str());
+    snprintf(l3, sizeof(l3), "RSSI %d dBm", static_cast<int>(WiFi.RSSI()));
+    snprintf(l4, sizeof(l4), "IP %s", WiFi.localIP().toString().c_str());
+  } else {
+    const WifiCredentials creds = gAppPrefs.loadWifiCredentials();
+    if (creds.valid) {
+      snprintf(l2, sizeof(l2), "WiFi: %.15s", creds.ssid.c_str());
+    } else {
+      snprintf(l2, sizeof(l2), "WiFi: brak konfig.");
+    }
+    snprintf(l3, sizeof(l3), "nie polaczono");
+    snprintf(l4, sizeof(l4), "AP %s", WiFi.softAPIP().toString().c_str());
+  }
+
+  String endpoint = gAppPrefs.loadApiEndpoint();
+  if (endpoint.length() > 0) {
+    endpoint.replace("https://", "");
+    endpoint.replace("http://", "");
+    snprintf(l5, sizeof(l5), "-> %.18s", endpoint.c_str());
+  } else {
+    snprintf(l5, sizeof(l5), "-> brak endpointu");
+  }
+  snprintf(l6, sizeof(l6), "ping %us  Tara=wroc",
+           static_cast<unsigned>(gAppPrefs.loadPingIntervalSec()));
+
+  const char* lines[6] = {l1, l2, l3, l4, l5, l6};
+  gDisplay.showInfoScreen(lines, 6);
+}
+
+// Test polaczenia WS (portal + przycisk 1 w serwisie). Blokujaco: w razie
+// potrzeby laczy STA, wznawia PosLink na probe i z powrotem go wstrzymuje.
+static String wsTestReport() {
+  if (!gPosLink.configValid()) {
+    return "Brak poprawnego endpointu";
+  }
+
+  if (WiFi.status() != WL_CONNECTED) {
+    const WifiCredentials wifi = gAppPrefs.loadWifiCredentials();
+    if (!wifi.valid) {
+      return "Brak zapisanej sieci WiFi";
+    }
+    gDisplay.showTwoLines("Test WS", "Laczenie WiFi...");
+    WiFi.begin(wifi.ssid.c_str(), wifi.password.c_str());
+    const unsigned long start = millis();
+    while (WiFi.status() != WL_CONNECTED && millis() - start < 12000) {
+      delay(100);
+    }
+    if (WiFi.status() != WL_CONNECTED) {
+      return "WiFi timeout";
+    }
+  }
+
+  gDisplay.showTwoLines("Test WS", "Laczenie...");
+  gPosLink.resume();
+  const unsigned long start = millis();
+  while (millis() - start < 6000 && !gPosLink.isConnected()) {
+    gPosLink.tick();
+    delay(20);
+  }
+
+  String result;
+  if (gPosLink.isConnected()) {
+    const unsigned long settle = millis();
+    while (millis() - settle < 500) {
+      gPosLink.tick();
+      delay(10);
+    }
+    result = "Polaczono: " + gPosLink.wsUrlText();
+    result += gPosLink.posOnline() ? " | POS online" : " | POS offline";
+  } else {
+    result = "Brak polaczenia: " + gPosLink.wsUrlText();
+  }
+
+  if (gServiceModeActive) {
+    gPosLink.suspend();
+  }
+  return result;
+}
+
+// Streaming masy na zywo: przy zmianie odczytu lub flagi stabilnosci,
+// nie czesciej niz co 100 ms (maks. ~10/s wg spec).
+static void tickLiveWeight(int netGrams) {
+  static int lastSentGrams = -1000000;
+  static bool lastStable = false;
+  static unsigned long lastSentMs = 0;
+
+  if (!gPosLink.isConnected()) {
+    return;
+  }
+  const unsigned long now = millis();
+  const bool stable = gStability.isStable(now);
+  if (now - lastSentMs < 100) {
+    return;
+  }
+  if (netGrams == lastSentGrams && stable == lastStable) {
+    return;
+  }
+  lastSentMs = now;
+  lastSentGrams = netGrams;
+  lastStable = stable;
+  gPosLink.sendWeight(netGrams / 1000.0f, stable);
 }
 
 static void enterServiceMode() {
   gWifiManager.setEnabled(false);
   gWifiManager.setApModeActive(true);
+  gPosLink.suspend();
   if (!gServicePortal.begin(OTA_AP_NAME)) {
     gWifiManager.setApModeActive(false);
     gWifiManager.setEnabled(true);
@@ -146,23 +270,30 @@ static void enterServiceMode() {
   }
   gServiceModeActive = true;
   gServiceDisplayUpdatedMs = 0;
+  gServiceInfoActive = false;
+  gServiceTaraHoldStartMs = 0;
   gBuzzer.beep(300);
   updateServiceDisplay();
 }
 
 static void exitServiceMode() {
   gTimeMenu.exit();
+  gCalMenu.exit();
+  gServiceInfoActive = false;
+  gServiceTaraHoldStartMs = 0;
   gServicePortal.stop();
   gServiceModeActive = false;
   gServicePortal.clearExitRequest();
   gWifiManager.setApModeActive(false);
   gWifiManager.setEnabled(true);
+  gPosLink.resume();
 }
 
 static void startOtaFromService() {
   gServicePortal.stop();
   gServiceModeActive = false;
   gServicePortal.clearOtaRequest();
+  gPosLink.suspend();
   gWifiManager.setApModeActive(false);
   gOtaBlockingWifi = true;
   gWifiManager.setEnabled(false);
@@ -232,10 +363,10 @@ void setup() {
   gOta.begin(otaConfig, &gAppPrefs, appDisplayStatus, otaOkButtonPressed);
 
   gWifiManager.begin(&gAppPrefs);
-  gMeasurementSender.begin(&gAppPrefs, &gRtc, appDisplayStatus, measurementBuzzerFeedback);
-  gMeasurementSender.setWifiManager(&gWifiManager);
+  gPosLink.begin(&gAppPrefs, FW_VERSION);
   gPingSender.begin(&gAppPrefs, FW_VERSION);
-  gMeasurementWorkflow.begin(&gMeasurementSender, &gDisplay);
+  gMeasurementWorkflow.begin(&gPosLink, &gDisplay, measurementBuzzerFeedback);
+  gServicePortal.setWsTestFn(wsTestReport);
 
   gDisplay.showLine("Laczenie WiFi");
   gWifiManager.connectAtBoot();
@@ -258,6 +389,7 @@ void loop() {
   if (gOtaBlockingWifi) {
     gOtaBlockingWifi = false;
     gWifiManager.setEnabled(true);
+    gPosLink.resume();
   }
 
   if (gTaraMsgUntilMs > millis()) {
@@ -283,8 +415,84 @@ void loop() {
       return;
     }
 
+    if (gCalMenu.isActive()) {
+      if (!gCalMenu.tick(gButtons)) {
+        gServiceDisplayUpdatedMs = 0;
+      }
+      return;
+    }
+
+    if (gServiceInfoActive) {
+      if (gButtons.wasPressed(BTN_TARA) || gButtons.wasPressed(BTN_OK) ||
+          gButtons.wasPressed(BTN_2)) {
+        gServiceInfoActive = false;
+        gServiceDisplayUpdatedMs = 0;
+        return;
+      }
+      const unsigned long now = millis();
+      if (now - gServiceDisplayUpdatedMs >= 2000) {
+        gServiceDisplayUpdatedMs = now;
+        showServiceInfo();
+      }
+      return;
+    }
+
+    // Przytrzymanie TARA 2 s = wyjście z trybu serwisowego bez telefonu.
+    if (gButtons.isHeld(BTN_TARA)) {
+      const unsigned long now = millis();
+      if (gServiceTaraHoldStartMs == 0) {
+        gServiceTaraHoldStartMs = now;
+      }
+      const int percent = static_cast<int>((now - gServiceTaraHoldStartMs) * 100 / 2000);
+      if (percent >= 100) {
+        gServiceTaraHoldStartMs = 0;
+        gBuzzer.beep(200);
+        exitServiceMode();
+        gDisplay.showLine("Koniec serwisu");
+        delay(800);
+        return;
+      }
+      gDisplay.showThreeLinesWithProgress("Wyjscie z", "trybu", "serwisowego", percent);
+      gServiceDisplayUpdatedMs = 0;
+      return;
+    }
+    gServiceTaraHoldStartMs = 0;
+
+    if (gButtons.wasPressed(BTN_1)) {
+      const String msg = wsTestReport();
+      gDisplay.showTwoLines("Test WS", msg.c_str());
+      gServiceDisplayUpdatedMs = millis();
+      return;
+    }
+
+    if (gButtons.wasPressed(BTN_2)) {
+      gServiceInfoActive = true;
+      gServiceDisplayUpdatedMs = millis();
+      showServiceInfo();
+      return;
+    }
+
     if (gButtons.wasPressed(BTN_3)) {
       gTimeMenu.enter();
+      return;
+    }
+
+    if (gButtons.wasPressed(BTN_4)) {
+      startOtaFromService();
+      return;
+    }
+
+    if (gButtons.wasPressed(BTN_5)) {
+      gCalMenu.enter();
+      return;
+    }
+
+    if (gButtons.wasPressed(BTN_6)) {
+      bool ok = false;
+      const String msg = gServiceActions.saveTara(&ok);
+      gDisplay.showTwoLines(ok ? "Tara" : "Blad", msg.c_str());
+      gBuzzer.beep(ok ? 150 : 80);
+      gServiceDisplayUpdatedMs = millis();
       return;
     }
 
@@ -302,8 +510,40 @@ void loop() {
     return;
   }
 
-  if (gMeasurementWorkflow.tick(gButtons, gScale)) {
+  gWifiManager.tick();
+  gPosLink.tick();
+
+  const int net = gScale.readNetGrams(gScale.runtimeTara());
+  gStability.feed(net, millis());
+  tickLiveWeight(net);
+  gPingSender.tick(gPosLink, gMeasurementWorkflow.isActive());
+
+  if (gMeasurementWorkflow.tick(gButtons, gScale, gStability)) {
     return;
+  }
+
+  if (gUndoMsgUntilMs > millis()) {
+    gDisplay.showTwoLines("Cofniecie", "wyslane do POS");
+    return;
+  }
+
+  // OK przytrzymane ~1,5 s = undo (gdy TARA tez wcisnieta, to kombinacja
+  // wejscia w serwis — nie liczymy).
+  if (gButtons.isHeld(BTN_OK) && !gButtons.isHeld(BTN_TARA)) {
+    const unsigned long now = millis();
+    if (gOkHoldStartMs == 0) {
+      gOkHoldStartMs = now;
+    }
+    if (now - gOkHoldStartMs >= 1500) {
+      gOkHoldStartMs = 0;
+      gPosLink.sendUndo();
+      gBuzzer.beep(200);
+      gUndoMsgUntilMs = millis() + 1000;
+      Serial.println("[pomiar] undo");
+      return;
+    }
+  } else {
+    gOkHoldStartMs = 0;
   }
 
   if (gButtons.wasPressed(BTN_TARA)) {
@@ -314,7 +554,5 @@ void loop() {
     return;
   }
 
-  gWifiManager.tick();
-  gPingSender.tick(gWifiManager.isConnected(), gMeasurementSender.isActive());
   processNormal();
 }

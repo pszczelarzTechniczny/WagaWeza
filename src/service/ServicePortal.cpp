@@ -1,7 +1,5 @@
 #include "ServicePortal.h"
 
-#include "../network/MeasurementSender.h"
-
 namespace {
 
 String escapeHtmlAttr(const String& value) {
@@ -165,35 +163,12 @@ void ServicePortal::registerRoutes() {
   });
 
   server_.on("/endpoint/test", HTTP_POST, [this]() {
-    const String endpoint = appPrefs_.loadApiEndpoint();
-    if (!AppPreferences::isValidApiEndpoint(endpoint)) {
-      server_.send(400, "text/html", resultPage("Test", "Brak poprawnego endpointu.", true));
+    if (wsTestFn_ == nullptr) {
+      server_.send(500, "text/html", resultPage("Test", "Niedostepny", true));
       return;
     }
-
-    const WifiCredentials wifi = appPrefs_.loadWifiCredentials();
-    if (!wifi.valid) {
-      server_.send(400, "text/html", resultPage("Test", "Brak zapisanej sieci WiFi.", true));
-      return;
-    }
-
-    RtcDateTime dt;
-    if (!clockActions_.readRtc(dt) || !RtcClock::isValid(dt)) {
-      server_.send(400, "text/html", resultPage("Test", "Brak poprawnego czasu DS3231.", true));
-      return;
-    }
-
-    const int weight = actions_.currentNetWeightGrams();
-    const String json = MeasurementSender::buildJsonPayload(dt, weight, 0);
-    const MeasurementPostResult result = MeasurementSender::postMeasurement(endpoint, json);
-
-    if (result.success) {
-      server_.send(200, "text/html",
-                   resultPage("Test OK", ("HTTP " + String(result.httpStatus)).c_str(), true));
-    } else {
-      const String msg = result.error.length() > 0 ? result.error : "Blad HTTP";
-      server_.send(500, "text/html", resultPage("Test blad", msg.c_str(), true));
-    }
+    const String msg = wsTestFn_();
+    server_.send(200, "text/html", resultPage("Test WS", msg.c_str(), true));
   });
 
   server_.on("/time/ntp", HTTP_POST, [this]() {
@@ -452,7 +427,7 @@ static const char kSvcPingA[] PROGMEM = R"html(" placeholder="https://example.co
           <div class="btns"><button class="bp" type="submit">Zapisz endpoint</button></div>
         </form>
         <form method="POST" action="/endpoint/test">
-          <p class="note">Test wy&#347;le JSON z aktualn&#261; wag&#261; i numerem przycisku 1 (wymaga WiFi i RTC).</p>
+          <p class="note">Test po&#322;&#261;czy si&#281; z serwerem WebSocket POS (wymaga WiFi).</p>
           <div class="btns"><button class="bd" type="submit">Testuj wysy&#322;k&#281;</button></div>
         </form>
       </div>
