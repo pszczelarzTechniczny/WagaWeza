@@ -28,12 +28,12 @@ void MeasurementWorkflow::showResult(const char* line1, const char* line2, bool 
   resultUntilMs_ = millis() + kResultMs;
 }
 
-const char* MeasurementWorkflow::ackErrorText(const String& code) {
+String MeasurementWorkflow::ackErrorText(const String& code) {
   if (code == "slot-not-mapped") return "Slot bez produktu";
   if (code == "product-inactive") return "Produkt nieaktywny";
   if (code == "product-not-weighed") return "Nie na wage";
   if (code == "bad-weight") return "Najpierw poloz towar";
-  return "Blad POS";
+  return "Blad: " + code;
 }
 
 bool MeasurementWorkflow::tick(InputButtons& buttons, Scale& scale,
@@ -62,7 +62,7 @@ bool MeasurementWorkflow::tick(InputButtons& buttons, Scale& scale,
         showResult(line1, line2, true);
       } else {
         Serial.printf("[pomiar] ack blad: %s\n", ack.error.c_str());
-        showResult("Blad", ackErrorText(ack.error), false);
+        showResult("Blad", ackErrorText(ack.error).c_str(), false);
       }
       return true;
     }

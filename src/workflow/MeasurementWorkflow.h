@@ -29,7 +29,7 @@ class MeasurementWorkflow {
   static const unsigned long kResultMs = 1500;
 
   void showResult(const char* line1, const char* line2, bool success);
-  static const char* ackErrorText(const String& code);
+  static String ackErrorText(const String& code);
 
   PosLink* link_;
   Display* display_;

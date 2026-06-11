@@ -273,14 +273,14 @@ Wysyłany przy każdej zmianie odczytu lub flagi stabilności (maks. ~10/s):
 #### `button` — naciśnięcie slotu 1–6
 
 ```json
-{ "type": "button", "slot": 3, "kg": 1.234, "eventId": "AA:BB:CC:DD:EE:FF-42" }
+{ "type": "button", "slot": 3, "kg": 1.234, "eventId": "7f3a-42" }
 ```
 
 | Pole | Typ | Opis |
 |------|-----|------|
 | `slot` | int | Numer slotu **1–6** |
 | `kg` | float | Masa netto w kilogramach |
-| `eventId` | string | Unikalny identyfikator zdarzenia (MAC + licznik) |
+| `eventId` | string | Unikalny identyfikator zdarzenia (losowy prefiks sesji + licznik) |
 
 #### `undo` — cofnięcie (OK przytrzymane ~1,5 s)
 
@@ -338,12 +338,12 @@ Pole `online` steruje wskaźnikiem **P** na ekranie roboczym.
 
 Sukces:
 ```json
-{ "type": "ack", "eventId": "AA:BB:CC:DD:EE:FF-42", "ok": true }
+{ "type": "ack", "eventId": "7f3a-42", "ok": true }
 ```
 
 Błąd:
 ```json
-{ "type": "ack", "eventId": "AA:BB:CC:DD:EE:FF-42", "ok": false, "error": "slot-not-mapped" }
+{ "type": "ack", "eventId": "7f3a-42", "ok": false, "error": "slot-not-mapped" }
 ```
 
 Kody błędów i komunikaty wyświetlane na OLED:

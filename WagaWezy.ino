@@ -57,6 +57,7 @@ static bool gServiceModeActive = false;
 static bool gOtaBlockingWifi = false;
 static unsigned long gTaraMsgUntilMs = 0;
 static unsigned long gOkHoldStartMs = 0;
+static bool gOkUndoFired = false;
 static unsigned long gUndoMsgUntilMs = 0;
 static unsigned long gServiceDisplayUpdatedMs = 0;
 static bool gServiceInfoActive = false;
@@ -528,14 +529,15 @@ void loop() {
   }
 
   // OK przytrzymane ~1,5 s = undo (gdy TARA tez wcisnieta, to kombinacja
-  // wejscia w serwis — nie liczymy).
+  // wejscia w serwis — nie liczymy). Jedno undo na przytrzymanie — kolejne
+  // dopiero po puszczeniu przycisku.
   if (gButtons.isHeld(BTN_OK) && !gButtons.isHeld(BTN_TARA)) {
     const unsigned long now = millis();
     if (gOkHoldStartMs == 0) {
       gOkHoldStartMs = now;
     }
-    if (now - gOkHoldStartMs >= 1500) {
-      gOkHoldStartMs = 0;
+    if (!gOkUndoFired && now - gOkHoldStartMs >= 1500) {
+      gOkUndoFired = true;
       gPosLink.sendUndo();
       gBuzzer.beep(200);
       gUndoMsgUntilMs = millis() + 1000;
@@ -544,6 +546,7 @@ void loop() {
     }
   } else {
     gOkHoldStartMs = 0;
+    gOkUndoFired = false;
   }
 
   if (gButtons.wasPressed(BTN_TARA)) {
