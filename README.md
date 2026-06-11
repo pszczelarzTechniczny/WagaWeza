@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, utrzymuje stałe połączenie WebSocket z POS (POSeidon) i obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.2.0`
+**Aktualna wersja firmware:** `1.2.1`
 
 ---
 
@@ -93,7 +93,7 @@ Przyciski podłącz do **GND** — w firmware włączony jest wewnętrzny pull-u
 
 ### Wejście w tryb serwisowy
 
-Przytrzymaj jednocześnie **Tara + OK** przez **5 sekund**. Na ekranie pojawi się pasek postępu. Po wejściu w tryb serwisowy waga uruchamia punkt dostępowy WiFi.
+Przytrzymaj jednocześnie **Tara + OK** przez **3 sekundy**. Na ekranie pojawi się pasek postępu. Po wejściu w tryb serwisowy waga uruchamia punkt dostępowy WiFi.
 
 ---
 
@@ -137,7 +137,7 @@ Monitor szeregowy: **115200 baud**.
 1. Wgraj firmware i uruchom urządzenie.
 2. Przy starcie wyświetli się ekran powitalny (domyślnie: *Witam / Pszczelarza / z Wąchocka*).
 3. Waga spróbuje połączyć się z zapisaną siecią WiFi (przy pierwszym uruchomieniu brak zapisanej sieci — to normalne).
-4. Wejdź w **tryb serwisowy** (Tara + OK, 5 s).
+4. Wejdź w **tryb serwisowy** (Tara + OK, 3 s).
 5. Połącz telefon lub komputer z siecią WiFi:
    - **SSID:** `WagaWezy-Setup`
    - **Hasło:** `12340000` (domyślne; można zmienić w portalu)
@@ -207,7 +207,7 @@ Przycisk **Tara** ustawia offset bieżącego obciążenia (tymczasowa tara w RAM
 
 ### Dostęp
 
-- **Wejście:** Tara + OK (5 s)
+- **Wejście:** Tara + OK (3 s)
 - **AP WiFi:** `WagaWezy-Setup`
 - **Hasło AP:** domyślnie `12340000` (8–63 znaki, konfigurowalne)
 - **Adres portalu:** IP punktu dostępowego (np. `192.168.4.1`)
@@ -269,7 +269,7 @@ https://host[:port]/cokolwiek  →  wss://host:port/ws/scale
 #### `hello` — po nawiązaniu połączenia
 
 ```json
-{ "type": "hello", "role": "scale", "fw": "1.2.0" }
+{ "type": "hello", "role": "scale", "fw": "1.2.1" }
 ```
 
 #### `weight` — masa na żywo
@@ -306,7 +306,7 @@ Wysyłany co skonfigurowany interwał (domyślnie co 30 s):
 {
   "type": "ping",
   "deviceId": "AA:BB:CC:DD:EE:FF",
-  "fw": "1.2.0",
+  "fw": "1.2.1",
   "rssi": -62,
   "uptimeSec": 1234,
   "freeHeap": 123456
@@ -408,7 +408,7 @@ static const char* OTA_GITHUB_REPO = "WagaWeza";
 Po każdej zmianie wersji zaktualizuj stałą w `WagaWezy.ino`:
 
 ```cpp
-static const char* FW_VERSION = "1.2.0";
+static const char* FW_VERSION = "1.2.1";
 ```
 
 ---

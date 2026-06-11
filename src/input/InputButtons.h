@@ -18,7 +18,7 @@ class InputButtons {
 
  private:
   static const unsigned long kDebounceMs = 35;
-  static const unsigned long kServiceComboHoldMs = 5000;
+  static const unsigned long kServiceComboHoldMs = 3000;
 
   bool rawPressed_[BTN_COUNT];
   bool stablePressed_[BTN_COUNT];

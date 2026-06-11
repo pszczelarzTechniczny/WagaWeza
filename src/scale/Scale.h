@@ -14,6 +14,10 @@ class Scale {
   bool begin(int dtPin, int sckPin);
   bool isPresent() const;
 
+  // Nieblokujące próbkowanie HX711: pobiera próbkę tylko gdy przetwornik
+  // ma gotowe dane (10/80 SPS) i aktualizuje cache odczytu. Wołać z loop().
+  void tick();
+
   void applyCalibration(const ScaleCalibrationData& data);
   ScaleCalibrationData calibrationData() const;
 
@@ -36,6 +40,8 @@ class Scale {
   int calWeightGrams_;
   int savedTara_;
   int runtimeTara_;
+  float emaGrams_;
+  bool hasSample_;
 };
 
 #endif

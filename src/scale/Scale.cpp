@@ -33,6 +33,8 @@ bool Scale::begin(int dtPin, int sckPin) {
   calWeightGrams_ = 5000;
   savedTara_ = 0;
   runtimeTara_ = 0;
+  emaGrams_ = 0.0f;
+  hasSample_ = false;
 
   hx711_.begin(dtPin, sckPin);
   if (hx711_.wait_ready_timeout(1000)) {
@@ -66,11 +68,25 @@ ScaleCalibrationData Scale::calibrationData() const {
   return data;
 }
 
+void Scale::tick() {
+  if (!present_ || !hx711_.is_ready()) {
+    return;
+  }
+  const float grams = hx711_.get_units(1);
+  if (!hasSample_) {
+    emaGrams_ = grams;
+    hasSample_ = true;
+  } else {
+    // EMA 50/50 — wygładzenie odpowiadające dawnemu uśrednianiu 2 próbek.
+    emaGrams_ = 0.5f * emaGrams_ + 0.5f * grams;
+  }
+}
+
 int Scale::readRawGrams() const {
-  if (!present_) {
+  if (!present_ || !hasSample_) {
     return 0;
   }
-  const int grams = (int)round(hx711_.get_units(kScaleReads));
+  const int grams = (int)round(emaGrams_);
   return constrain(grams, 0, kMaxWeightGrams);
 }
 
@@ -83,7 +99,8 @@ bool Scale::bootTareIfEmpty() {
   if (!present_ || factor_ == 0.0f) {
     return false;
   }
-  const int grams = readRawGrams();
+  // W setup() cache jeszcze pusty — tu odczyt blokujący jest w porządku.
+  const int grams = (int)round(hx711_.get_units(kScaleReads));
   if (grams > -20 && grams < 20) {
     tare();
     return true;

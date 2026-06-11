@@ -29,7 +29,7 @@
 #include "src/ota/OtaStateMachine.h"
 #include "src/output/Buzzer.h"
 
-static const char* FW_VERSION = "1.2.0";
+static const char* FW_VERSION = "1.2.1";
 static const char* OTA_GITHUB_OWNER = "pszczelarzTechniczny";
 static const char* OTA_GITHUB_REPO = "WagaWeza";
 static const char* OTA_AP_NAME = "WagaWezy-Setup";
@@ -117,6 +117,15 @@ static void refreshMainClockText() {
 }
 
 static void processNormal() {
+  // Pętla jest teraz szybka (nieblokujący odczyt HX711) — pełny redraw OLED
+  // co obieg blokowałby ją na I2C; 10 odświeżeń/s w zupełności wystarcza.
+  static unsigned long lastDrawMs = 0;
+  const unsigned long now = millis();
+  if (now - lastDrawMs < 100) {
+    return;
+  }
+  lastDrawMs = now;
+
   refreshMainClockText();
   const int net = gScale.readNetGrams(gScale.runtimeTara());
   WeightStatus status;
@@ -410,6 +419,7 @@ void setup() {
 void loop() {
   gButtons.tick();
   gBuzzer.tick();
+  gScale.tick();
 
   if (gOta.isActive()) {
     gOta.tick();
