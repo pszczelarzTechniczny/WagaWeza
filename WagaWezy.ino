@@ -27,7 +27,7 @@
 #include "src/ota/OtaStateMachine.h"
 #include "src/output/Buzzer.h"
 
-static const char* FW_VERSION = "1.0.3";
+static const char* FW_VERSION = "1.0.4";
 static const char* OTA_GITHUB_OWNER = "pszczelarzTechniczny";
 static const char* OTA_GITHUB_REPO = "WagaWeza";
 static const char* OTA_AP_NAME = "WagaWezy-Setup";
