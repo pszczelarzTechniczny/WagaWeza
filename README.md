@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, utrzymuje stałe połączenie WebSocket z POS (POSeidon) i obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.4.0`
+**Aktualna wersja firmware:** `1.4.1`
 
 ---
 
@@ -290,7 +290,7 @@ https://host[:port]/cokolwiek  →  wss://host:port/ws/scale
 #### `hello` — po nawiązaniu połączenia
 
 ```json
-{ "type": "hello", "role": "scale", "fw": "1.4.0", "deviceId": "AA:BB:CC:DD:EE:FF" }
+{ "type": "hello", "role": "scale", "fw": "1.4.1", "deviceId": "AA:BB:CC:DD:EE:FF" }
 ```
 
 #### `weight` — masa na żywo
@@ -329,7 +329,7 @@ Wysyłany co skonfigurowany interwał (domyślnie co 30 s):
 {
   "type": "ping",
   "deviceId": "AA:BB:CC:DD:EE:FF",
-  "fw": "1.4.0",
+  "fw": "1.4.1",
   "ip": "192.168.1.50",
   "ssid": "MojaSiec",
   "rssi": -62,
@@ -447,7 +447,7 @@ static const char* OTA_GITHUB_REPO = "WagaWeza";
 Po każdej zmianie wersji zaktualizuj stałą w `WagaWezy.ino`:
 
 ```cpp
-static const char* FW_VERSION = "1.4.0";
+static const char* FW_VERSION = "1.4.1";
 ```
 
 ---
