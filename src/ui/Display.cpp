@@ -37,7 +37,7 @@ void Display::showTwoLines(const char* line1, const char* line2) {
   u8g2_.sendBuffer();
 }
 
-void Display::showWeight(int grams, const char* clockLine) {
+void Display::showWeight(int grams, const char* clockLine, const WeightStatus* status) {
   char buf[16];
   const float kg = grams / 1000.0f;
   snprintf(buf, sizeof(buf), "%.2fkg", kg);
@@ -78,6 +78,32 @@ void Display::showWeight(int grams, const char* clockLine) {
     u8g2_.setFont(u8g2_font_6x10_tf);
     u8g2_.setCursor(0, 10);
     u8g2_.print(clockLine);
+  }
+
+  if (status != nullptr) {
+    // Gorny prawy rog: trzy kwadraciki W/S/P (pelny = polaczone).
+    u8g2_.setFont(u8g2_font_6x10_tf);
+    const char labels[3] = {'W', 'S', 'P'};
+    const bool states[3] = {status->wifi, status->ws, status->pos};
+    int x = 128 - 3 * 12;
+    for (int i = 0; i < 3; ++i) {
+      if (states[i]) {
+        u8g2_.drawBox(x, 1, 9, 9);
+        u8g2_.setDrawColor(0);
+      } else {
+        u8g2_.drawFrame(x, 1, 9, 9);
+      }
+      u8g2_.setCursor(x + 2, 9);
+      u8g2_.print(labels[i]);
+      u8g2_.setDrawColor(1);
+      x += 12;
+    }
+    // Dolny lewy rog: kolo stabilnosci (pelne = stabilny odczyt).
+    if (status->stable) {
+      u8g2_.drawDisc(5, 57, 3);
+    } else {
+      u8g2_.drawCircle(5, 57, 3);
+    }
   }
 
   u8g2_.sendBuffer();
@@ -242,6 +268,40 @@ void Display::showTimeMenuRoot(const char* dateLine, const char* timeLine) {
   u8g2_.setFont(u8g2_font_6x10_tf);
   u8g2_.setCursor(0, 54);
   u8g2_.print("1:Get 2:Recz Tara:wyj");
+  u8g2_.sendBuffer();
+}
+
+void Display::showCalWeightEdit(int grams) {
+  char valueBuf[16];
+  snprintf(valueBuf, sizeof(valueBuf), "%d g", grams);
+
+  u8g2_.clearBuffer();
+  u8g2_.setFont(u8g2_font_courB10_tf);
+  u8g2_.setCursor(0, 14);
+  u8g2_.print("Kalibracja 2/2");
+  u8g2_.setFont(u8g2_font_6x10_tf);
+  u8g2_.setCursor(0, 26);
+  u8g2_.print("Masa wzorcowa:");
+  u8g2_.setFont(u8g2_font_courB18_tf);
+  const int w = u8g2_.getStrWidth(valueBuf);
+  u8g2_.setCursor((128 - w) / 2, 50);
+  u8g2_.print(valueBuf);
+  u8g2_.setFont(u8g2_font_6x10_tf);
+  u8g2_.setCursor(0, 62);
+  u8g2_.print("1/+ 2/- OK=kalibruj");
+  u8g2_.sendBuffer();
+}
+
+void Display::showInfoScreen(const char* const lines[], uint8_t count) {
+  u8g2_.clearBuffer();
+  u8g2_.setFont(u8g2_font_6x10_tf);
+  for (uint8_t i = 0; i < count && i < 6; ++i) {
+    if (lines[i] == nullptr) {
+      continue;
+    }
+    u8g2_.setCursor(0, 9 + i * 11);
+    u8g2_.print(lines[i]);
+  }
   u8g2_.sendBuffer();
 }
 
