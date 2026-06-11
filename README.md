@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, utrzymuje stałe połączenie WebSocket z POS (POSeidon) i obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.3.1`
+**Aktualna wersja firmware:** `1.4.0`
 
 ---
 
@@ -36,7 +36,8 @@ Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyśw
 - **Ping keepalive z telemetrią** — wysyłany po WebSocket co skonfigurowany interwał (wersja firmware, RSSI, uptime, wolny heap)
 - **Portal serwisowy** (captive portal) do konfiguracji WiFi, kalibracji, czasu i OTA
 - **Obsługa serwisowa z wagi** — czas, kalibracja, tara, test połączenia WS, ekran info i OTA dostępne przyciskami, bez telefonu
-- **Aktualizacja OTA** z GitHub Releases
+- **Aktualizacja OTA** z GitHub Releases (z detekcją zwisu pobierania — przerwanie po 10 s bez danych)
+- **Watchdog 30 s** — automatyczny restart przy zawieszeniu pętli lub OTA
 - Sygnalizacja dźwiękowa (buzzer)
 - Zapis konfiguracji w pamięci NVS (Preferences)
 
@@ -171,8 +172,18 @@ Po starcie waga:
 Na ekranie wyświetlane są:
 
 - masa netto i godzina z DS3231
-- trzy kwadraciki **W / S / P** (WiFi / WebSocket / POS) — pełny kwadrat = aktywne połączenie
+- trzy kwadraciki **W / S / P** (WiFi / WebSocket / POS) — pełny kwadrat = aktywne połączenie. Gdy brak połączenia WS, zamiast ikon w prawym górnym rogu wyświetlany jest wyraźny napis **OFFLINE** (w negatywie)
 - kółko stabilności w lewym dolnym rogu — pełne = stabilny odczyt
+
+### Ekrany stanów
+
+Zamiast masy waga wyświetla komunikat, gdy odczyt nie jest wiarygodny:
+
+| Stan | Ekran | Działanie |
+|------|-------|-----------|
+| Niewykalibrowany przetwornik | *Brak kalibracji / Wejdz do menu / serwisowego* | Wykonaj kalibrację w menu serwisowym |
+| Przeciążenie (masa ponad zakres tensometru) | *PRZECIAZENIE / Zdejmij towar* | Zdejmij towar |
+| Odczyt wyraźnie ujemny (zdjęta szalka, dryf) | *Odczyt ujemny / Wykonaj tare* | Wykonaj tarę |
 
 ### Wysyłka pomiaru
 
@@ -195,11 +206,15 @@ Po wysyłce serwer odsyła `ack`. Gdy odpowiedź nie nadejdzie w 2 s, firmware p
 
 ### Cofnięcie (undo)
 
-Przytrzymaj **OK** przez ~1,5 s — waga wyśle `undo {}` do POS, który wycofa z bieżącego koszyka wszystkie pozycje dodane z wagi. Drugie naciśnięcie (gdy nie ma nic do cofnięcia) jest bezpieczne.
+Przytrzymaj **OK** przez ~1,5 s — waga wyśle `undo {}` do POS, który wycofa z bieżącego koszyka wszystkie pozycje dodane z wagi. W trakcie trzymania na ekranie pojawia się pasek postępu (*Cofniecie / pozycji z wagi / trzymaj OK*); puszczenie przed końcem anuluje akcję. Na ekranie potwierdzenia pomyślnej wysyłki pomiaru wyświetlana jest też podpowiedź *OK 1.5s = cofnij*. Drugie naciśnięcie (gdy nie ma nic do cofnięcia) jest bezpieczne.
 
 ### Szybka tara
 
-Przycisk **Tara** ustawia offset bieżącego obciążenia (tymczasowa tara w RAM, bez zapisu do NVS).
+Przycisk **Tara** ustawia offset bieżącego obciążenia (tymczasowa tara w RAM). Tara jest automatycznie zapisywana do NVS po 5 s (debounce chroni flash przy wielokrotnym tarowaniu) — dzięki temu po restarcie w ciągu dnia waga wstaje z aktywną tarą.
+
+### Auto-zero i filtrowanie odczytu
+
+Odczyt HX711 jest filtrowany (mediana z 3 próbek + adaptacyjna EMA), a drobny dryf wokół zera (creep termiczny) jest kompensowany przez **auto-zero** w wąskim paśmie wokół zera.
 
 ---
 
@@ -252,7 +267,7 @@ z adresem IP portalu). Sterowanie: **1** = góra, **2** = dół, **OK** = wybór
 | Pozycja | Funkcja |
 |---------|---------|
 | Test WS | Łączy się z WebSocket i raportuje stan (adres WS, wynik, status POS) |
-| Info | Wersja FW, SSID, RSSI, IP, endpoint, interwał pinga |
+| Info | Dwie strony (OK = przełącz, Tara = wyjście). Strona 1: wersja FW, SSID, RSSI, IP, endpoint, interwał pinga. Strona 2 (diagnostyka): wersja FW, powód ostatniego restartu, licznik bootów, liczba rozłączeń WS, ostatni RTT ack |
 | Czas | Menu czasu DS3231 — NTP (przycisk 1) lub edycja ręczna (przycisk 2; 1/+, 2/−, OK = następne pole) |
 | Aktualizacja | Sprawdzenie i instalacja aktualizacji OTA (jak *Sprawdź aktualizacje* w portalu) |
 | Kalibracja | Krok 1: opróżnij wagę + OK; krok 2: masa wzorca 1/+ 2/− (krok 50 g, autorepeat, po 3 s krok 500 g), OK = kalibruj |
@@ -275,7 +290,7 @@ https://host[:port]/cokolwiek  →  wss://host:port/ws/scale
 #### `hello` — po nawiązaniu połączenia
 
 ```json
-{ "type": "hello", "role": "scale", "fw": "1.3.1" }
+{ "type": "hello", "role": "scale", "fw": "1.4.0", "deviceId": "AA:BB:CC:DD:EE:FF" }
 ```
 
 #### `weight` — masa na żywo
@@ -289,7 +304,7 @@ Wysyłany przy każdej zmianie odczytu lub flagi stabilności (maks. ~10/s):
 #### `button` — naciśnięcie slotu 1–6
 
 ```json
-{ "type": "button", "slot": 3, "kg": 1.234, "eventId": "7f3a-42" }
+{ "type": "button", "slot": 3, "kg": 1.234, "eventId": "7f3a-42", "deviceId": "AA:BB:CC:DD:EE:FF", "ts": "2026-06-11T12:34:56" }
 ```
 
 | Pole | Typ | Opis |
@@ -297,6 +312,8 @@ Wysyłany przy każdej zmianie odczytu lub flagi stabilności (maks. ~10/s):
 | `slot` | int | Numer slotu **1–6** |
 | `kg` | float | Masa netto w kilogramach |
 | `eventId` | string | Unikalny identyfikator zdarzenia (losowy prefiks sesji + licznik) |
+| `deviceId` | string | Adres MAC wagi (przygotowanie pod wiele wag) |
+| `ts` | string | Znacznik czasu ISO 8601 z DS3231 (`YYYY-MM-DDTHH:MM:SS`); pomijany, gdy RTC nieobecny lub czas nieustawiony |
 
 #### `undo` — cofnięcie (OK przytrzymane ~1,5 s)
 
@@ -312,10 +329,16 @@ Wysyłany co skonfigurowany interwał (domyślnie co 30 s):
 {
   "type": "ping",
   "deviceId": "AA:BB:CC:DD:EE:FF",
-  "fw": "1.3.1",
+  "fw": "1.4.0",
+  "ip": "192.168.1.50",
+  "ssid": "MojaSiec",
   "rssi": -62,
   "uptimeSec": 1234,
-  "freeHeap": 123456
+  "freeHeap": 123456,
+  "resetReason": "POWERON",
+  "bootCount": 42,
+  "wsDisconnects": 3,
+  "ackRttMs": 87
 }
 ```
 
@@ -324,9 +347,15 @@ Wysyłany co skonfigurowany interwał (domyślnie co 30 s):
 | `type` | string | Zawsze `"ping"` |
 | `deviceId` | string | Adres MAC interfejsu WiFi |
 | `fw` | string | Wersja firmware (`FW_VERSION`) |
+| `ip` | string | Adres IP wagi w sieci lokalnej |
+| `ssid` | string | SSID przyłączonej sieci WiFi |
 | `rssi` | int | Siła sygnału WiFi w dBm |
 | `uptimeSec` | int | Czas od startu urządzenia w sekundach |
 | `freeHeap` | int | Wolna pamięć heap w bajtach |
+| `resetReason` | string | Powód ostatniego restartu (`POWERON`, `SW`, `PANIC`, `INT_WDT`, `TASK_WDT`, `BROWNOUT`, …) |
+| `bootCount` | int | Licznik uruchomień (trwały w NVS) |
+| `wsDisconnects` | int | Liczba rozłączeń WebSocket od startu |
+| `ackRttMs` | int | Czas (ms) ostatniej odpowiedzi `ack` na `button` |
 
 | Ustawienie | Wartość |
 |------------|---------|
@@ -414,7 +443,7 @@ static const char* OTA_GITHUB_REPO = "WagaWeza";
 Po każdej zmianie wersji zaktualizuj stałą w `WagaWezy.ino`:
 
 ```cpp
-static const char* FW_VERSION = "1.3.1";
+static const char* FW_VERSION = "1.4.0";
 ```
 
 ---

@@ -6,6 +6,8 @@
 
 #include "../storage/AppPreferences.h"
 
+class RtcClock;
+
 // Wynik ack serwera POS dla zdarzenia button.
 struct PosAck {
   bool received = false;
@@ -20,7 +22,7 @@ class PosLink {
  public:
   PosLink();
 
-  void begin(AppPreferences* appPrefs, const char* fwVersion);
+  void begin(AppPreferences* appPrefs, const char* fwVersion, RtcClock* rtc = nullptr);
   // Rozłącza i wstrzymuje (tryb serwisowy / OTA).
   void suspend();
   // Wznawia po suspend(); przeładowuje URL z NVS (endpoint mógł się zmienić).
@@ -38,8 +40,13 @@ class PosLink {
   // Retry z tym samym eventId (serwer deduplikuje).
   void resendButton(const String& eventId, uint8_t slot, float kg);
   void sendUndo();
-  void sendPing(const char* deviceId, int rssi, unsigned long uptimeSec,
-                unsigned long freeHeap);
+  void sendPing(const char* deviceId, const char* ip, const char* ssid, int rssi,
+                unsigned long uptimeSec, unsigned long freeHeap);
+
+  // Diagnostyka dolaczana do pingu (powod resetu, licznik bootow).
+  void setDiagnostics(const char* resetReason, uint32_t bootCount);
+  uint32_t wsDisconnects() const { return wsDisconnects_; }
+  uint32_t lastAckRttMs() const { return lastAckRttMs_; }
 
   // Jednorazowe pobranie ostatniego ack (zeruje bufor). false = brak nowego.
   bool takeAck(PosAck& out);
@@ -65,6 +72,13 @@ class PosLink {
 
   AppPreferences* appPrefs_;
   String fwVersion_;
+  RtcClock* rtc_;
+  String deviceId_;
+  String resetReason_;
+  uint32_t bootCount_;
+  uint32_t wsDisconnects_;
+  uint32_t lastAckRttMs_;
+  unsigned long buttonSentAtMs_;
   WebSocketsClient ws_;
   bool suspended_;
   bool started_;

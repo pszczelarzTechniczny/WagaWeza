@@ -54,6 +54,9 @@ class AppPreferences {
   String loadWsToken() const;
   bool saveWsToken(const String& token);
 
+  uint32_t loadBootCount() const;
+  uint32_t incrementBootCount();
+
  private:
   static const char* kNamespace;
   static const char* kSsidKey;
@@ -65,6 +68,7 @@ class AppPreferences {
   static const char* kApPinKey;
   static const char* kPingIntervalKey;
   static const char* kWsTokenKey;
+  static const char* kBootCountKey;
 
   static String trimWelcomeLine(const String& value);
   static String trimEndpoint(const String& value);

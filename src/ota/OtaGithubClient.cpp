@@ -3,6 +3,7 @@
 #include <HTTPClient.h>
 #include <Update.h>
 #include <WiFiClientSecure.h>
+#include <esp_task_wdt.h>
 
 OtaGithubClient::OtaGithubClient() {}
 
@@ -94,13 +95,22 @@ bool OtaGithubClient::installFromUrl(const String& binUrl,
   NetworkClient* stream = http.getStreamPtr();
   uint8_t buffer[1024];
   int writtenTotal = 0;
+  unsigned long lastDataMs = millis();
 
   while (http.connected() && (contentLength < 0 || writtenTotal < contentLength)) {
+    esp_task_wdt_reset();
     const size_t available = stream->available();
     if (available == 0) {
+      if (millis() - lastDataMs > 10000) {
+        errorOut = "Zwis pobierania (10 s bez danych)";
+        Update.abort();
+        http.end();
+        return false;
+      }
       delay(1);
       continue;
     }
+    lastDataMs = millis();
 
     const int toRead = available > sizeof(buffer) ? sizeof(buffer) : available;
     const int readCount = stream->readBytes(buffer, toRead);

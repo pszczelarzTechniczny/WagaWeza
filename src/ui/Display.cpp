@@ -81,22 +81,32 @@ void Display::showWeight(int grams, const char* clockLine, const WeightStatus* s
   }
 
   if (status != nullptr) {
-    // Gorny prawy rog: trzy kwadraciki W/S/P (pelny = polaczone).
-    u8g2_.setFont(u8g2_font_6x10_tf);
-    const char labels[3] = {'W', 'S', 'P'};
-    const bool states[3] = {status->wifi, status->ws, status->pos};
-    int x = 128 - 3 * 12;
-    for (int i = 0; i < 3; ++i) {
-      if (states[i]) {
-        u8g2_.drawBox(x, 1, 9, 9);
-        u8g2_.setDrawColor(0);
-      } else {
-        u8g2_.drawFrame(x, 1, 9, 9);
-      }
-      u8g2_.setCursor(x + 2, 9);
-      u8g2_.print(labels[i]);
+    if (!status->ws) {
+      // Brak polaczenia WS — wyrazny napis OFFLINE w negatywie zamiast ikon.
+      u8g2_.drawBox(70, 0, 58, 11);
+      u8g2_.setDrawColor(0);
+      u8g2_.setFont(u8g2_font_6x10_tf);
+      u8g2_.setCursor(73, 9);
+      u8g2_.print("OFFLINE");
       u8g2_.setDrawColor(1);
-      x += 12;
+    } else {
+      // Gorny prawy rog: trzy kwadraciki W/S/P (pelny = polaczone).
+      u8g2_.setFont(u8g2_font_6x10_tf);
+      const char labels[3] = {'W', 'S', 'P'};
+      const bool states[3] = {status->wifi, status->ws, status->pos};
+      int x = 128 - 3 * 12;
+      for (int i = 0; i < 3; ++i) {
+        if (states[i]) {
+          u8g2_.drawBox(x, 1, 9, 9);
+          u8g2_.setDrawColor(0);
+        } else {
+          u8g2_.drawFrame(x, 1, 9, 9);
+        }
+        u8g2_.setCursor(x + 2, 9);
+        u8g2_.print(labels[i]);
+        u8g2_.setDrawColor(1);
+        x += 12;
+      }
     }
     // Dolny lewy rog: kolo stabilnosci (pelne = stabilny odczyt).
     if (status->stable) {

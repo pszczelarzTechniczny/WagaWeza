@@ -10,6 +10,7 @@ const char* AppPreferences::kApiEndpointKey = "api_endpoint";
 const char* AppPreferences::kApPinKey = "ap_pin";
 const char* AppPreferences::kPingIntervalKey = "ping_interval";
 const char* AppPreferences::kWsTokenKey = "ws_token";
+const char* AppPreferences::kBootCountKey = "boot_count";
 
 AppPreferences::AppPreferences() {}
 
@@ -239,6 +240,27 @@ bool AppPreferences::saveApPin(const String& pin) {
   const size_t written = prefs.putString(kApPinKey, pin);
   prefs.end();
   return written > 0;
+}
+
+uint32_t AppPreferences::loadBootCount() const {
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, true)) {
+    return 0;
+  }
+  const uint32_t value = prefs.getUInt(kBootCountKey, 0);
+  prefs.end();
+  return value;
+}
+
+uint32_t AppPreferences::incrementBootCount() {
+  Preferences prefs;
+  if (!prefs.begin(kNamespace, false)) {
+    return 0;
+  }
+  const uint32_t next = prefs.getUInt(kBootCountKey, 0) + 1;
+  prefs.putUInt(kBootCountKey, next);
+  prefs.end();
+  return next;
 }
 
 bool AppPreferences::isValidPingIntervalSec(uint16_t seconds) {

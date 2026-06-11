@@ -38,6 +38,9 @@ void PingSender::tick(PosLink& link, bool measurementActive) {
   lastPingMs_ = now;
 
   const String mac = WiFi.macAddress();
-  link.sendPing(mac.c_str(), WiFi.RSSI(), millis() / 1000UL, ESP.getFreeHeap());
+  const String ip = WiFi.localIP().toString();
+  const String ssid = WiFi.SSID();
+  link.sendPing(mac.c_str(), ip.c_str(), ssid.c_str(), WiFi.RSSI(), millis() / 1000UL,
+                ESP.getFreeHeap());
   Serial.println("[ws] ping wyslany");
 }

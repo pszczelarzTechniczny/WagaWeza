@@ -1,9 +1,18 @@
 #include "PosLink.h"
 
+#include <WiFi.h>
+
+#include "../rtc/RtcClock.h"
+
 PosLink* PosLink::instance_ = nullptr;
 
 PosLink::PosLink()
     : appPrefs_(nullptr),
+      rtc_(nullptr),
+      bootCount_(0),
+      wsDisconnects_(0),
+      lastAckRttMs_(0),
+      buttonSentAtMs_(0),
       suspended_(false),
       started_(false),
       connected_(false),
@@ -14,9 +23,11 @@ PosLink::PosLink()
       eventCounter_(0),
       updateRequested_(false) {}
 
-void PosLink::begin(AppPreferences* appPrefs, const char* fwVersion) {
+void PosLink::begin(AppPreferences* appPrefs, const char* fwVersion, RtcClock* rtc) {
   appPrefs_ = appPrefs;
   fwVersion_ = fwVersion != nullptr ? fwVersion : "";
+  rtc_ = rtc;
+  deviceId_ = WiFi.macAddress();
   instance_ = this;
 
   char prefix[8];
@@ -133,6 +144,8 @@ void PosLink::onEvent(WStype_t type, uint8_t* payload, size_t length) {
       Serial.println("[ws] polaczono z POS");
       String hello = "{\"type\":\"hello\",\"role\":\"scale\",\"fw\":\"";
       hello += fwVersion_;
+      hello += "\",\"deviceId\":\"";
+      hello += deviceId_;
       hello += "\"}";
       sendJson(hello);
       break;
@@ -140,6 +153,7 @@ void PosLink::onEvent(WStype_t type, uint8_t* payload, size_t length) {
     case WStype_DISCONNECTED:
       if (connected_) {
         Serial.println("[ws] rozlaczono");
+        ++wsDisconnects_;
       }
       connected_ = false;
       posOnline_ = false;
@@ -166,6 +180,7 @@ void PosLink::handleText(const String& json) {
       Serial.println(online ? "online" : "offline");
     }
   } else if (type == "ack") {
+    lastAckRttMs_ = millis() - buttonSentAtMs_;
     lastAck_.received = true;
     jsonFindBool(json, "ok", lastAck_.ok);
     lastAck_.error = "";
@@ -254,7 +269,18 @@ String PosLink::buttonJson(const String& eventId, uint8_t slot, float kg) const 
   json += formatKg(kg);
   json += ",\"eventId\":\"";
   json += eventId;
-  json += "\"}";
+  json += "\",\"deviceId\":\"";
+  json += deviceId_;
+  json += "\"";
+  if (rtc_ != nullptr) {
+    RtcDateTime dt;
+    if (rtc_->read(dt) && RtcClock::isValid(dt)) {
+      json += ",\"ts\":\"";
+      json += RtcClock::formatIso8601(dt);
+      json += "\"";
+    }
+  }
+  json += "}";
   return json;
 }
 
@@ -267,28 +293,47 @@ String PosLink::sendButton(uint8_t slot, float kg) {
   eventId += "-";
   eventId += eventCounter_;
   lastAck_ = PosAck();  // nowe zdarzenie uniewaznia zalegly ack
+  buttonSentAtMs_ = millis();
   sendJson(buttonJson(eventId, slot, kg));
   return eventId;
 }
 
 void PosLink::resendButton(const String& eventId, uint8_t slot, float kg) {
+  buttonSentAtMs_ = millis();
   sendJson(buttonJson(eventId, slot, kg));
 }
 
 void PosLink::sendUndo() { sendJson("{\"type\":\"undo\"}"); }
 
-void PosLink::sendPing(const char* deviceId, int rssi, unsigned long uptimeSec,
-                       unsigned long freeHeap) {
+void PosLink::setDiagnostics(const char* resetReason, uint32_t bootCount) {
+  resetReason_ = resetReason != nullptr ? resetReason : "";
+  bootCount_ = bootCount;
+}
+
+void PosLink::sendPing(const char* deviceId, const char* ip, const char* ssid, int rssi,
+                       unsigned long uptimeSec, unsigned long freeHeap) {
   String json = "{\"type\":\"ping\",\"deviceId\":\"";
   json += deviceId;
   json += "\",\"fw\":\"";
   json += fwVersion_;
+  json += "\",\"ip\":\"";
+  json += ip;
+  json += "\",\"ssid\":\"";
+  json += ssid;
   json += "\",\"rssi\":";
   json += rssi;
   json += ",\"uptimeSec\":";
   json += uptimeSec;
   json += ",\"freeHeap\":";
   json += freeHeap;
+  json += ",\"resetReason\":\"";
+  json += resetReason_;
+  json += "\",\"bootCount\":";
+  json += bootCount_;
+  json += ",\"wsDisconnects\":";
+  json += wsDisconnects_;
+  json += ",\"ackRttMs\":";
+  json += lastAckRttMs_;
   json += "}";
   sendJson(json);
 }

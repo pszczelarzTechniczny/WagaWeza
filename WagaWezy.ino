@@ -6,6 +6,7 @@
 #include <cstring>
 
 #include <WiFi.h>
+#include <esp_task_wdt.h>
 
 #include "config/Pins.h"
 #include "config/Buttons.h"
@@ -30,7 +31,7 @@
 #include "src/ota/OtaStateMachine.h"
 #include "src/output/Buzzer.h"
 
-static const char* FW_VERSION = "1.3.1";
+static const char* FW_VERSION = "1.4.0";
 static const char* OTA_GITHUB_OWNER = "pszczelarzTechniczny";
 static const char* OTA_GITHUB_REPO = "WagaWeza";
 static const char* OTA_AP_NAME = "WagaWezy-Setup";
@@ -63,7 +64,11 @@ static bool gOkUndoFired = false;
 static unsigned long gUndoMsgUntilMs = 0;
 static unsigned long gServiceDisplayUpdatedMs = 0;
 static bool gServiceInfoActive = false;
+static uint8_t gServiceInfoPage = 0;
 static unsigned long gServiceMsgUntilMs = 0;
+static unsigned long gTaraPersistDueMs = 0;
+static char gResetReason[16] = "?";
+static uint32_t gBootCount = 0;
 
 static void appDisplayStatus(const char* line1, const char* line2, const char* line3,
                              int progressPercent) {
@@ -129,6 +134,20 @@ static void processNormal() {
   lastDrawMs = now;
 
   refreshMainClockText();
+
+  if (!gScale.isCalibrated()) {
+    gDisplay.showThreeLinesLeft("Brak kalibracji", "Wejdz do menu", "serwisowego");
+    return;
+  }
+  if (gScale.isOverload()) {
+    gDisplay.showTwoLines("PRZECIAZENIE", "Zdejmij towar");
+    return;
+  }
+  if (gScale.isUnderRange()) {
+    gDisplay.showTwoLines("Odczyt ujemny", "Wykonaj tare");
+    return;
+  }
+
   const int net = gScale.readNetGrams(gScale.runtimeTara());
   WeightStatus status;
   status.wifi = gWifiManager.isConnected();
@@ -138,8 +157,21 @@ static void processNormal() {
   gDisplay.showWeight(net, gMainClockText[0] != '\0' ? gMainClockText : nullptr, &status);
 }
 
-static void showServiceInfo() {
+static void showServiceInfo(uint8_t page) {
   char l1[24], l2[24], l3[24], l4[24], l5[24], l6[24];
+
+  if (page == 1) {
+    snprintf(l1, sizeof(l1), "FW v%s", FW_VERSION);
+    snprintf(l2, sizeof(l2), "Restart: %s", gResetReason);
+    snprintf(l3, sizeof(l3), "Booty: %u", static_cast<unsigned>(gBootCount));
+    snprintf(l4, sizeof(l4), "WS rozl.: %u", static_cast<unsigned>(gPosLink.wsDisconnects()));
+    snprintf(l5, sizeof(l5), "Ack RTT: %u ms", static_cast<unsigned>(gPosLink.lastAckRttMs()));
+    snprintf(l6, sizeof(l6), "OK=wroc Tara=wyjdz");
+    const char* lines[6] = {l1, l2, l3, l4, l5, l6};
+    gDisplay.showInfoScreen(lines, 6);
+    return;
+  }
+
   snprintf(l1, sizeof(l1), "FW v%s", FW_VERSION);
 
   if (WiFi.status() == WL_CONNECTED) {
@@ -165,8 +197,7 @@ static void showServiceInfo() {
   } else {
     snprintf(l5, sizeof(l5), "-> brak endpointu");
   }
-  snprintf(l6, sizeof(l6), "ping %us  Tara=wroc",
-           static_cast<unsigned>(gAppPrefs.loadPingIntervalSec()));
+  snprintf(l6, sizeof(l6), "OK=wiecej Tara=wroc");
 
   const char* lines[6] = {l1, l2, l3, l4, l5, l6};
   gDisplay.showInfoScreen(lines, 6);
@@ -188,6 +219,7 @@ static String wsTestReport() {
     WiFi.begin(wifi.ssid.c_str(), wifi.password.c_str());
     const unsigned long start = millis();
     while (WiFi.status() != WL_CONNECTED && millis() - start < 12000) {
+      esp_task_wdt_reset();
       delay(100);
     }
     if (WiFi.status() != WL_CONNECTED) {
@@ -199,6 +231,7 @@ static String wsTestReport() {
   gPosLink.resume();
   const unsigned long start = millis();
   while (millis() - start < 6000 && !gPosLink.isConnected()) {
+    esp_task_wdt_reset();
     gPosLink.tick();
     delay(20);
   }
@@ -207,6 +240,7 @@ static String wsTestReport() {
   if (gPosLink.isConnected()) {
     const unsigned long settle = millis();
     while (millis() - settle < 500) {
+      esp_task_wdt_reset();
       gPosLink.tick();
       delay(10);
     }
@@ -321,6 +355,17 @@ void setup() {
   delay(100);
   Serial.println("WagaWezy start");
 
+  // Watchdog 30 s — restart przy zwisie loop()/OTA. Core esp32 3.x inicjuje
+  // task WDT przy starcie, wiec init zwroci INVALID_STATE -> rekonfiguracja.
+  esp_task_wdt_config_t wdtCfg = {};
+  wdtCfg.timeout_ms = 30000;
+  wdtCfg.idle_core_mask = 0;
+  wdtCfg.trigger_panic = true;
+  if (esp_task_wdt_init(&wdtCfg) == ESP_ERR_INVALID_STATE) {
+    esp_task_wdt_reconfigure(&wdtCfg);
+  }
+  esp_task_wdt_add(NULL);
+
   gButtons.begin();
   gBuzzer.begin(PIN_BUZZER, PIN_BUZZER_ACTIVE_LOW);
 
@@ -334,6 +379,8 @@ void setup() {
   gScale.begin(PIN_HX711_DT, PIN_HX711_SCK);
   gScale.applyCalibration(cal);
   gAppPrefs.begin();
+  const uint32_t bootCount = gAppPrefs.incrementBootCount();
+  gBootCount = bootCount;
 
   if (!gRtc.begin()) {
     Serial.println("DS3231 not found on I2C");
@@ -372,8 +419,23 @@ void setup() {
   gOta.begin(otaConfig, &gAppPrefs, appDisplayStatus, otaOkButtonPressed);
 
   gWifiManager.begin(&gAppPrefs);
-  gPosLink.begin(&gAppPrefs, FW_VERSION);
+  gPosLink.begin(&gAppPrefs, FW_VERSION, &gRtc);
   gPingSender.begin(&gAppPrefs, FW_VERSION);
+
+  switch (esp_reset_reason()) {
+    case ESP_RST_POWERON: strncpy(gResetReason, "POWERON", sizeof(gResetReason)); break;
+    case ESP_RST_SW: strncpy(gResetReason, "SW", sizeof(gResetReason)); break;
+    case ESP_RST_PANIC: strncpy(gResetReason, "PANIC", sizeof(gResetReason)); break;
+    case ESP_RST_INT_WDT: strncpy(gResetReason, "INT_WDT", sizeof(gResetReason)); break;
+    case ESP_RST_TASK_WDT: strncpy(gResetReason, "TASK_WDT", sizeof(gResetReason)); break;
+    case ESP_RST_WDT: strncpy(gResetReason, "WDT", sizeof(gResetReason)); break;
+    case ESP_RST_BROWNOUT: strncpy(gResetReason, "BROWNOUT", sizeof(gResetReason)); break;
+    case ESP_RST_DEEPSLEEP: strncpy(gResetReason, "DEEPSLEEP", sizeof(gResetReason)); break;
+    default: snprintf(gResetReason, sizeof(gResetReason), "%d", static_cast<int>(esp_reset_reason())); break;
+  }
+  gResetReason[sizeof(gResetReason) - 1] = '\0';
+  gPosLink.setDiagnostics(gResetReason, bootCount);
+  Serial.printf("[diag] reset=%s boot=%u\n", gResetReason, static_cast<unsigned>(bootCount));
   gMeasurementWorkflow.begin(&gPosLink, &gDisplay, measurementBuzzerFeedback);
   gServicePortal.setWsTestFn(wsTestReport);
 
@@ -387,6 +449,8 @@ void setup() {
 }
 
 void loop() {
+  esp_task_wdt_reset();
+
   gButtons.tick();
   gBuzzer.tick();
   gScale.tick();
@@ -435,15 +499,21 @@ void loop() {
     }
 
     if (gServiceInfoActive) {
-      if (gButtons.wasPressed(BTN_TARA) || gButtons.wasPressed(BTN_OK)) {
+      if (gButtons.wasPressed(BTN_TARA)) {
         gServiceInfoActive = false;
         gServiceMenu.requestRedraw();
+        return;
+      }
+      if (gButtons.wasPressed(BTN_OK)) {
+        gServiceInfoPage ^= 1;
+        gServiceDisplayUpdatedMs = millis();
+        showServiceInfo(gServiceInfoPage);
         return;
       }
       const unsigned long now = millis();
       if (now - gServiceDisplayUpdatedMs >= 2000) {
         gServiceDisplayUpdatedMs = now;
-        showServiceInfo();
+        showServiceInfo(gServiceInfoPage);
       }
       return;
     }
@@ -466,8 +536,9 @@ void loop() {
       }
       case ServiceMenuAction::INFO:
         gServiceInfoActive = true;
+        gServiceInfoPage = 0;
         gServiceDisplayUpdatedMs = millis();
-        showServiceInfo();
+        showServiceInfo(gServiceInfoPage);
         return;
       case ServiceMenuAction::TIME:
         gTimeMenu.enter();
@@ -514,6 +585,19 @@ void loop() {
   tickLiveWeight(net);
   gPingSender.tick(gPosLink, gMeasurementWorkflow.isActive());
 
+  // Auto-zapis szybkiej tary do NVS (debounce 5 s chroni flash). Po restarcie
+  // waga wstaje z aktywna tara — applyCalibration przywraca savedTara.
+  if (gTaraPersistDueMs != 0 && millis() >= gTaraPersistDueMs) {
+    gTaraPersistDueMs = 0;
+    if (gScale.runtimeTara() != gScale.calibrationData().savedTara) {
+      ScaleCalibrationData d = gScale.calibrationData();
+      d.savedTara = gScale.runtimeTara();
+      gScalePrefs.save(d);
+      gScale.applyCalibration(d);
+      Serial.println("[tara] zapisano runtime tare do NVS");
+    }
+  }
+
   if (gMeasurementWorkflow.tick(gButtons, gScale, gStability)) {
     return;
   }
@@ -546,6 +630,11 @@ void loop() {
       Serial.println("[pomiar] undo");
       return;
     }
+    if (!gOkUndoFired) {
+      const int percent = static_cast<int>((now - gOkHoldStartMs) * 100 / 1500);
+      gDisplay.showThreeLinesWithProgress("Cofniecie", "pozycji z wagi", "trzymaj OK", percent);
+      return;
+    }
   } else {
     gOkHoldStartMs = 0;
     gOkUndoFired = false;
@@ -554,6 +643,7 @@ void loop() {
   if (gButtons.wasPressed(BTN_TARA)) {
     gScale.setRuntimeTara(gScale.readRawGrams());
     gTaraMsgUntilMs = millis() + 500;
+    gTaraPersistDueMs = millis() + 5000;
     gBuzzer.beep(150);
     Serial.println("Quick tara");
     return;

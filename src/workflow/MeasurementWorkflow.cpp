@@ -20,7 +20,11 @@ void MeasurementWorkflow::begin(PosLink* link, Display* display, BuzzerCallback 
 bool MeasurementWorkflow::isActive() const { return state_ != State::IDLE; }
 
 void MeasurementWorkflow::showResult(const char* line1, const char* line2, bool success) {
-  display_->showTwoLines(line1, line2);
+  if (success) {
+    display_->showThreeLinesLeft(line1, line2, "OK 1.5s = cofnij");
+  } else {
+    display_->showTwoLines(line1, line2);
+  }
   if (buzzer_ != nullptr) {
     buzzer_(success);
   }
@@ -92,11 +96,16 @@ bool MeasurementWorkflow::tick(InputButtons& buttons, Scale& scale,
       return true;
     }
 
-    const int grams = scale.readNetGrams(scale.runtimeTara());
-    if (grams > Scale::kMaxWeightGrams) {
+    if (scale.isOverload()) {
       showResult("Przeciazenie", "Zdejmij towar", false);
       return true;
     }
+    if (scale.isUnderRange()) {
+      showResult("Odczyt ujemny", "Wykonaj tare", false);
+      return true;
+    }
+
+    const int grams = scale.readNetGrams(scale.runtimeTara());
     if (grams <= 0 || !stability.isStable(now)) {
       showResult("Poloz towar", "i poczekaj", false);
       return true;

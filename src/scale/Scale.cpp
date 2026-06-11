@@ -35,6 +35,11 @@ bool Scale::begin(int dtPin, int sckPin) {
   runtimeTara_ = 0;
   emaGrams_ = 0.0f;
   hasSample_ = false;
+  sampleIdx_ = 0;
+  sampleCount_ = 0;
+  autoZeroGrams_ = 0.0f;
+  autoZeroSinceMs_ = 0;
+  lastAutoZeroStepMs_ = 0;
 
   hx711_.begin(dtPin, sckPin);
   if (hx711_.wait_ready_timeout(1000)) {
@@ -52,6 +57,8 @@ void Scale::applyCalibration(const ScaleCalibrationData& data) {
   calWeightGrams_ = data.calWeightGrams;
   savedTara_ = data.savedTara;
   runtimeTara_ = data.savedTara;
+  autoZeroGrams_ = 0.0f;
+  autoZeroSinceMs_ = 0;
 
   if (present_ && factor_ != 0.0f) {
     hx711_.set_scale(factor_);
@@ -68,17 +75,57 @@ ScaleCalibrationData Scale::calibrationData() const {
   return data;
 }
 
+namespace {
+
+float median3(float a, float b, float c) {
+  if (a > b) { const float t = a; a = b; b = t; }
+  if (b > c) { const float t = b; b = c; c = t; }
+  if (a > b) { const float t = a; a = b; b = t; }
+  return b;
+}
+
+}  // namespace
+
 void Scale::tick() {
   if (!present_ || !hx711_.is_ready()) {
     return;
   }
   const float grams = hx711_.get_units(1);
+
+  samples_[sampleIdx_] = grams;
+  sampleIdx_ = (uint8_t)((sampleIdx_ + 1) % 3);
+  if (sampleCount_ < 3) {
+    ++sampleCount_;
+  }
+
+  // Mediana z 3 próbek odcina pojedyncze skoki HX711.
+  const float filtered =
+      (sampleCount_ < 3) ? grams : median3(samples_[0], samples_[1], samples_[2]);
+
   if (!hasSample_) {
-    emaGrams_ = grams;
+    emaGrams_ = filtered;
     hasSample_ = true;
   } else {
-    // EMA 50/50 — wygładzenie odpowiadające dawnemu uśrednianiu 2 próbek.
-    emaGrams_ = 0.5f * emaGrams_ + 0.5f * grams;
+    // Adaptacyjna EMA: mocne wygładzenie przy stabilnym odczycie, szybkie
+    // nadążanie przy realnej zmianie masy.
+    const float alpha = (fabsf(filtered - emaGrams_) > 50.0f) ? 0.6f : 0.25f;
+    emaGrams_ = (1.0f - alpha) * emaGrams_ + alpha * filtered;
+  }
+
+  // Auto-zero: gdy odczyt długo siedzi w wąskim pasie wokół zera, powoli
+  // dociągamy korektę (dryf termiczny/creep) — bez ręcznego tarowania.
+  const unsigned long now = millis();
+  const float nearZero = emaGrams_ - autoZeroGrams_;
+  if (fabsf(nearZero) < (float)kAutoZeroBandGrams && fabsf(nearZero) > 0.5f) {
+    if (autoZeroSinceMs_ == 0) {
+      autoZeroSinceMs_ = now;
+    }
+    if (now - autoZeroSinceMs_ >= 5000 && now - lastAutoZeroStepMs_ >= 1000) {
+      lastAutoZeroStepMs_ = now;
+      autoZeroGrams_ += (nearZero > 0) ? 0.5f : -0.5f;
+    }
+  } else {
+    autoZeroSinceMs_ = 0;
   }
 }
 
@@ -86,8 +133,17 @@ int Scale::readRawGrams() const {
   if (!present_ || !hasSample_) {
     return 0;
   }
-  const int grams = (int)round(emaGrams_);
+  const int grams = (int)round(emaGrams_ - autoZeroGrams_);
   return constrain(grams, 0, kMaxWeightGrams);
+}
+
+bool Scale::isOverload() const {
+  return present_ && hasSample_ &&
+         (emaGrams_ - autoZeroGrams_) > (float)(kMaxWeightGrams + kOverloadMarginGrams);
+}
+
+bool Scale::isUnderRange() const {
+  return present_ && hasSample_ && (emaGrams_ - autoZeroGrams_) < -50.0f;
 }
 
 int Scale::readNetGrams(int taraOffset) const {
