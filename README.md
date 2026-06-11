@@ -195,7 +195,7 @@ Po wysyłce serwer odsyła `ack`. Gdy odpowiedź nie nadejdzie w 2 s, firmware p
 
 ### Cofnięcie (undo)
 
-Przytrzymaj **OK** przez ~1,5 s — waga wyśle `undo {}` do POS, cofając ostatnio dodaną pozycję z wagi.
+Przytrzymaj **OK** przez ~1,5 s — waga wyśle `undo {}` do POS, który wycofa z bieżącego koszyka wszystkie pozycje dodane z wagi. Drugie naciśnięcie (gdy nie ma nic do cofnięcia) jest bezpieczne.
 
 ### Szybka tara
 
