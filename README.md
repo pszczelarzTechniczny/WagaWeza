@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, utrzymuje stałe połączenie WebSocket z POS (POSeidon) i obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.1.0`
+**Aktualna wersja firmware:** `1.1.1`
 
 ---
 
@@ -178,7 +178,7 @@ Na ekranie wyświetlane są:
 
 Naciśnij przycisk **1–6**, aby wysłać pomiar do POS przez WebSocket. Wysyłka wymaga:
 
-- stabilnego odczytu (odchylenie ±2 g przez co najmniej 600 ms; kółko stabilności pełne)
+- stabilnego odczytu (odchylenie ±10 g przez co najmniej 600 ms; kółko stabilności pełne)
 - masy netto > 0 g i < 50 kg
 - aktywnego połączenia WebSocket (wskaźnik **S** pełny)
 
@@ -241,7 +241,7 @@ W trybie serwisowym przyciski na wadze mają funkcje serwisowe — telefon nie j
 | **6** | Zapis trwałej tary do NVS (min. 20 g obciążenia) |
 | **Tara** (przytrzymane 2 s) | Wyjście z trybu serwisowego |
 
-Ekran serwisowy rotuje co 2 s: adres IP portalu → mapa przycisków → czas DS3231.
+Ekran serwisowy jest statyczny: nagłówek z godziną, adres IP portalu, mapa przycisków i podpowiedź wyjścia (Tara 2 s).
 
 ---
 
@@ -259,7 +259,7 @@ https://host[:port]/cokolwiek  →  wss://host:port/ws/scale
 #### `hello` — po nawiązaniu połączenia
 
 ```json
-{ "type": "hello", "role": "scale", "fw": "1.1.0" }
+{ "type": "hello", "role": "scale", "fw": "1.1.1" }
 ```
 
 #### `weight` — masa na żywo
@@ -296,7 +296,7 @@ Wysyłany co skonfigurowany interwał (domyślnie co 30 s):
 {
   "type": "ping",
   "deviceId": "AA:BB:CC:DD:EE:FF",
-  "fw": "1.1.0",
+  "fw": "1.1.1",
   "rssi": -62,
   "uptimeSec": 1234,
   "freeHeap": 123456
@@ -398,7 +398,7 @@ static const char* OTA_GITHUB_REPO = "WagaWeza";
 Po każdej zmianie wersji zaktualizuj stałą w `WagaWezy.ino`:
 
 ```cpp
-static const char* FW_VERSION = "1.1.0";
+static const char* FW_VERSION = "1.1.1";
 ```
 
 ---

@@ -29,7 +29,7 @@
 #include "src/ota/OtaStateMachine.h"
 #include "src/output/Buzzer.h"
 
-static const char* FW_VERSION = "1.1.0";
+static const char* FW_VERSION = "1.1.1";
 static const char* OTA_GITHUB_OWNER = "pszczelarzTechniczny";
 static const char* OTA_GITHUB_REPO = "WagaWeza";
 static const char* OTA_AP_NAME = "WagaWezy-Setup";
@@ -134,20 +134,29 @@ static void updateServiceDisplay() {
   }
   gServiceDisplayUpdatedMs = now;
 
-  static uint8_t screen = 0;
-  screen = (screen + 1) % 3;
+  // Jeden statyczny ekran (odswiezany co 2 s tylko dla zegara w naglowku).
+  String dateLine;
+  String timeLine;
+  gClockActions.currentTimeLines(dateLine, timeLine);
 
-  if (screen == 0) {
-    const String ip = WiFi.softAPIP().toString();
-    gDisplay.showThreeLinesLeft("Tryb serwisowy", ip.c_str(), "Tara 2s = wyjscie");
-  } else if (screen == 1) {
-    gDisplay.showThreeLinesLeft("1=test 2=info 3=czas", "4=update 5=kalibr", "6=tara");
+  char l1[24];
+  if (timeLine.length() >= 5) {
+    snprintf(l1, sizeof(l1), "Serwis %.5s", timeLine.c_str());
   } else {
-    String dateLine;
-    String timeLine;
-    gClockActions.currentTimeLines(dateLine, timeLine);
-    gDisplay.showThreeLinesLeft("Czas DS3231", dateLine.c_str(), timeLine.c_str());
+    snprintf(l1, sizeof(l1), "Serwis");
   }
+  char l2[24];
+  snprintf(l2, sizeof(l2), "%s", WiFi.softAPIP().toString().c_str());
+
+  const char* lines[6] = {
+      l1,
+      l2,
+      "1=test 2=info 3=czas",
+      "4=update 5=kalibr",
+      "6=tara",
+      "Tara 2s = wyjscie",
+  };
+  gDisplay.showInfoScreen(lines, 6);
 }
 
 static void showServiceInfo() {
