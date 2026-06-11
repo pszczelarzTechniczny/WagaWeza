@@ -21,6 +21,7 @@
 #include "src/service/ServicePortal.h"
 #include "src/service/ServiceTimeMenu.h"
 #include "src/service/ServiceCalMenu.h"
+#include "src/service/ServiceMenu.h"
 #include "src/network/WifiConnectionManager.h"
 #include "src/network/PosLink.h"
 #include "src/network/PingSender.h"
@@ -29,7 +30,7 @@
 #include "src/ota/OtaStateMachine.h"
 #include "src/output/Buzzer.h"
 
-static const char* FW_VERSION = "1.2.1";
+static const char* FW_VERSION = "1.3.0";
 static const char* OTA_GITHUB_OWNER = "pszczelarzTechniczny";
 static const char* OTA_GITHUB_REPO = "WagaWeza";
 static const char* OTA_AP_NAME = "WagaWezy-Setup";
@@ -45,6 +46,7 @@ static ClockServiceActions gClockActions(gRtc, gAppPrefs);
 static ServicePortal gServicePortal(gServiceActions, gClockActions, gAppPrefs);
 static ServiceTimeMenu gTimeMenu(gClockActions, gDisplay);
 static ServiceCalMenu gCalMenu(gServiceActions, gDisplay);
+static ServiceMenu gServiceMenu(gDisplay);
 static WifiConnectionManager gWifiManager;
 static PosLink gPosLink;
 static StabilityTracker gStability;
@@ -61,7 +63,7 @@ static bool gOkUndoFired = false;
 static unsigned long gUndoMsgUntilMs = 0;
 static unsigned long gServiceDisplayUpdatedMs = 0;
 static bool gServiceInfoActive = false;
-static unsigned long gServiceTaraHoldStartMs = 0;
+static unsigned long gServiceMsgUntilMs = 0;
 
 static void appDisplayStatus(const char* line1, const char* line2, const char* line3,
                              int progressPercent) {
@@ -134,38 +136,6 @@ static void processNormal() {
   status.pos = gPosLink.posOnline();
   status.stable = gStability.isStable(millis());
   gDisplay.showWeight(net, gMainClockText[0] != '\0' ? gMainClockText : nullptr, &status);
-}
-
-static void updateServiceDisplay() {
-  const unsigned long now = millis();
-  if (now - gServiceDisplayUpdatedMs < 2000) {
-    return;
-  }
-  gServiceDisplayUpdatedMs = now;
-
-  // Jeden statyczny ekran (odswiezany co 2 s tylko dla zegara w naglowku).
-  String dateLine;
-  String timeLine;
-  gClockActions.currentTimeLines(dateLine, timeLine);
-
-  char l1[24];
-  if (timeLine.length() >= 5) {
-    snprintf(l1, sizeof(l1), "Serwis %.5s", timeLine.c_str());
-  } else {
-    snprintf(l1, sizeof(l1), "Serwis");
-  }
-  char l2[24];
-  snprintf(l2, sizeof(l2), "%s", WiFi.softAPIP().toString().c_str());
-
-  const char* lines[6] = {
-      l1,
-      l2,
-      "1=test 2=info 3=czas",
-      "4=update 5=kalibr",
-      "6=tara",
-      "Tara 2s = wyjscie",
-  };
-  gDisplay.showInfoScreen(lines, 6);
 }
 
 static void showServiceInfo() {
@@ -290,16 +260,16 @@ static void enterServiceMode() {
   gServiceModeActive = true;
   gServiceDisplayUpdatedMs = 0;
   gServiceInfoActive = false;
-  gServiceTaraHoldStartMs = 0;
+  gServiceMsgUntilMs = 0;
   gBuzzer.beep(300);
-  updateServiceDisplay();
+  gServiceMenu.enter(WiFi.softAPIP().toString().c_str());
 }
 
 static void exitServiceMode() {
   gTimeMenu.exit();
   gCalMenu.exit();
   gServiceInfoActive = false;
-  gServiceTaraHoldStartMs = 0;
+  gServiceMsgUntilMs = 0;
   gServicePortal.stop();
   gServiceModeActive = false;
   gServicePortal.clearExitRequest();
@@ -451,22 +421,23 @@ void loop() {
     }
 
     if (gTimeMenu.isActive()) {
-      gTimeMenu.tick(gButtons);
+      if (!gTimeMenu.tick(gButtons)) {
+        gServiceMenu.requestRedraw();
+      }
       return;
     }
 
     if (gCalMenu.isActive()) {
       if (!gCalMenu.tick(gButtons)) {
-        gServiceDisplayUpdatedMs = 0;
+        gServiceMenu.requestRedraw();
       }
       return;
     }
 
     if (gServiceInfoActive) {
-      if (gButtons.wasPressed(BTN_TARA) || gButtons.wasPressed(BTN_OK) ||
-          gButtons.wasPressed(BTN_2)) {
+      if (gButtons.wasPressed(BTN_TARA) || gButtons.wasPressed(BTN_OK)) {
         gServiceInfoActive = false;
-        gServiceDisplayUpdatedMs = 0;
+        gServiceMenu.requestRedraw();
         return;
       }
       const unsigned long now = millis();
@@ -477,66 +448,51 @@ void loop() {
       return;
     }
 
-    // Przytrzymanie TARA 2 s = wyjście z trybu serwisowego bez telefonu.
-    if (gButtons.isHeld(BTN_TARA)) {
-      const unsigned long now = millis();
-      if (gServiceTaraHoldStartMs == 0) {
-        gServiceTaraHoldStartMs = now;
-      }
-      const int percent = static_cast<int>((now - gServiceTaraHoldStartMs) * 100 / 2000);
-      if (percent >= 100) {
-        gServiceTaraHoldStartMs = 0;
-        gBuzzer.beep(200);
-        exitServiceMode();
-        gDisplay.showLine("Koniec serwisu");
-        delay(800);
+    // Komunikat wyniku (test/tara) trzymany na ekranie do upływu czasu.
+    if (gServiceMsgUntilMs != 0) {
+      if (millis() < gServiceMsgUntilMs) {
         return;
       }
-      gDisplay.showThreeLinesWithProgress("Wyjscie z", "trybu", "serwisowego", percent);
-      gServiceDisplayUpdatedMs = 0;
-      return;
-    }
-    gServiceTaraHoldStartMs = 0;
-
-    if (gButtons.wasPressed(BTN_1)) {
-      const String msg = wsTestReport();
-      gDisplay.showTwoLines("Test WS", msg.c_str());
-      gServiceDisplayUpdatedMs = millis();
-      return;
+      gServiceMsgUntilMs = 0;
+      gServiceMenu.requestRedraw();
     }
 
-    if (gButtons.wasPressed(BTN_2)) {
-      gServiceInfoActive = true;
-      gServiceDisplayUpdatedMs = millis();
-      showServiceInfo();
-      return;
+    switch (gServiceMenu.tick(gButtons)) {
+      case ServiceMenuAction::TEST_WS: {
+        const String msg = wsTestReport();
+        gDisplay.showTwoLines("Test WS", msg.c_str());
+        gServiceMsgUntilMs = millis() + 2500;
+        return;
+      }
+      case ServiceMenuAction::INFO:
+        gServiceInfoActive = true;
+        gServiceDisplayUpdatedMs = millis();
+        showServiceInfo();
+        return;
+      case ServiceMenuAction::TIME:
+        gTimeMenu.enter();
+        return;
+      case ServiceMenuAction::UPDATE:
+        startOtaFromService();
+        return;
+      case ServiceMenuAction::CALIBRATION:
+        gCalMenu.enter();
+        return;
+      case ServiceMenuAction::TARA_SAVE: {
+        bool ok = false;
+        const String msg = gServiceActions.saveTara(&ok);
+        gDisplay.showTwoLines(ok ? "Tara" : "Blad", msg.c_str());
+        gBuzzer.beep(ok ? 150 : 80);
+        gServiceMsgUntilMs = millis() + 2000;
+        return;
+      }
+      case ServiceMenuAction::EXIT:
+        gBuzzer.beep(200);
+        exitServiceMode();
+        return;
+      case ServiceMenuAction::NONE:
+        break;
     }
-
-    if (gButtons.wasPressed(BTN_3)) {
-      gTimeMenu.enter();
-      return;
-    }
-
-    if (gButtons.wasPressed(BTN_4)) {
-      startOtaFromService();
-      return;
-    }
-
-    if (gButtons.wasPressed(BTN_5)) {
-      gCalMenu.enter();
-      return;
-    }
-
-    if (gButtons.wasPressed(BTN_6)) {
-      bool ok = false;
-      const String msg = gServiceActions.saveTara(&ok);
-      gDisplay.showTwoLines(ok ? "Tara" : "Blad", msg.c_str());
-      gBuzzer.beep(ok ? 150 : 80);
-      gServiceDisplayUpdatedMs = millis();
-      return;
-    }
-
-    updateServiceDisplay();
     return;
   }
 

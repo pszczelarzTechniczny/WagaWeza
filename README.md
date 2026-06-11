@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, utrzymuje stałe połączenie WebSocket z POS (POSeidon) i obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.2.1`
+**Aktualna wersja firmware:** `1.3.0`
 
 ---
 
@@ -239,19 +239,19 @@ gdy ten jest ustawiony.
 
 ### Obsługa z wagi (bez WWW)
 
-W trybie serwisowym przyciski na wadze mają funkcje serwisowe — telefon nie jest potrzebny:
+Tryb serwisowy pokazuje **nawigowane menu** z ikonami (nagłówek w negatywie
+z adresem IP portalu). Sterowanie: **1** = góra, **2** = dół, **OK** = wybór,
+**Tara** = wyjście z trybu serwisowego (w pod-ekranach Tara = powrót do menu).
 
-| Przycisk | Funkcja |
-|----------|---------|
-| **1** | Test połączenia WS — łączy się z WebSocket i raportuje stan (adres WS, wynik) na OLED |
-| **2** | Ekran info — wersja FW, SSID, RSSI, IP, endpoint, interwał pinga (powrót: Tara/OK/2) |
-| **3** | Menu czasu DS3231 — NTP (przycisk 1) lub edycja ręczna (przycisk 2; 1/+, 2/−, OK = następne pole) |
-| **4** | Sprawdzenie i instalacja aktualizacji OTA (jak *Sprawdź aktualizacje* w portalu) |
-| **5** | Kalibracja — krok 1: opróżnij wagę + OK; krok 2: ustaw masę wzorca 1/+ 2/− (krok 50 g, przytrzymanie = autorepeat, po 3 s krok 500 g), OK = kalibruj |
-| **6** | Zapis trwałej tary do NVS (min. 20 g obciążenia) |
-| **Tara** (przytrzymane 2 s) | Wyjście z trybu serwisowego |
-
-Ekran serwisowy jest statyczny: nagłówek z godziną, adres IP portalu, mapa przycisków i podpowiedź wyjścia (Tara 2 s).
+| Pozycja | Funkcja |
+|---------|---------|
+| Test WS | Łączy się z WebSocket i raportuje stan (adres WS, wynik, status POS) |
+| Info | Wersja FW, SSID, RSSI, IP, endpoint, interwał pinga |
+| Czas | Menu czasu DS3231 — NTP (przycisk 1) lub edycja ręczna (przycisk 2; 1/+, 2/−, OK = następne pole) |
+| Aktualizacja | Sprawdzenie i instalacja aktualizacji OTA (jak *Sprawdź aktualizacje* w portalu) |
+| Kalibracja | Krok 1: opróżnij wagę + OK; krok 2: masa wzorca 1/+ 2/− (krok 50 g, autorepeat, po 3 s krok 500 g), OK = kalibruj |
+| Zapis tary | Zapis trwałej tary do NVS (min. 20 g obciążenia) |
+| Wyjście | Powrót do trybu normalnego |
 
 ---
 
@@ -269,7 +269,7 @@ https://host[:port]/cokolwiek  →  wss://host:port/ws/scale
 #### `hello` — po nawiązaniu połączenia
 
 ```json
-{ "type": "hello", "role": "scale", "fw": "1.2.1" }
+{ "type": "hello", "role": "scale", "fw": "1.3.0" }
 ```
 
 #### `weight` — masa na żywo
@@ -306,7 +306,7 @@ Wysyłany co skonfigurowany interwał (domyślnie co 30 s):
 {
   "type": "ping",
   "deviceId": "AA:BB:CC:DD:EE:FF",
-  "fw": "1.2.1",
+  "fw": "1.3.0",
   "rssi": -62,
   "uptimeSec": 1234,
   "freeHeap": 123456
@@ -408,7 +408,7 @@ static const char* OTA_GITHUB_REPO = "WagaWeza";
 Po każdej zmianie wersji zaktualizuj stałą w `WagaWezy.ino`:
 
 ```cpp
-static const char* FW_VERSION = "1.2.1";
+static const char* FW_VERSION = "1.3.0";
 ```
 
 ---
