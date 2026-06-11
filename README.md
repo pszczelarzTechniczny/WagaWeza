@@ -172,7 +172,7 @@ Po starcie waga:
 Na ekranie wyświetlane są:
 
 - masa netto i godzina z DS3231
-- trzy kwadraciki **W / S / P** (WiFi / WebSocket / POS) — pełny kwadrat = aktywne połączenie. Gdy brak połączenia WS, zamiast ikon w prawym górnym rogu wyświetlany jest wyraźny napis **OFFLINE** (w negatywie)
+- trzy kwadraciki **W / S / P** (WiFi / WebSocket / POS) — pełny kwadrat = aktywne połączenie. Gdy łańcuch połączenia jest zerwany, zamiast ikon w prawym górnym rogu wyświetlany jest wyraźny napis w negatywie: **BRAK WIFI** (brak sieci) lub **OFFLINE** (WiFi działa, brak połączenia z POS)
 - kółko stabilności w lewym dolnym rogu — pełne = stabilny odczyt
 
 ### Ekrany stanów
@@ -407,8 +407,12 @@ Kody błędów i komunikaty wyświetlane na OLED:
 ### Zachowanie połączenia
 
 - Przy starcie waga próbuje połączyć się z zapisaną siecią (timeout ~12 s).
+- Modem sleep WiFi jest wyłączony (`WiFi.setSleep(false)`) — stabilniejsza sesja przy bezczynności i niższa latencja (waga jest zasilana z sieci).
 - W tle co 5 s sprawdzany jest stan połączenia; przy utracie sieci następuje automatyczne ponowne łączenie (backoff 10 s).
 - Po nawiązaniu WiFi uruchamiany jest klient WebSocket (`PosLink`), który utrzymuje stałe połączenie z POS.
+- **Heartbeat klienta WS** (ping co 15 s, timeout 3 s, 2 nieudane = rozłączenie) — wykrywa połączenia „zombie" (TCP półotwarte po ubiciu sesji przez router/serwer).
+- **Backoff reconnectu WS** — domyślnie próba co 3 s; po 3 nieudanych próbach z rzędu interwał rośnie do 30 s (każda nieudana próba blokuje pętlę do 5 s). Po udanym połączeniu lub wznowieniu wraca do 3 s.
+- Gdy brak WiFi, próby połączenia WS są pomijane do czasu przywrócenia sieci.
 - W trybie serwisowym i podczas OTA zarządzanie WiFi i WS jest wstrzymywane, aby nie kolidować z AP/portalem.
 
 ### Wymagania sieciowe
