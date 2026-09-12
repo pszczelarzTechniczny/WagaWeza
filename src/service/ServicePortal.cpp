@@ -2,6 +2,23 @@
 
 namespace {
 
+String urlEncode(const String& value) {
+  String out;
+  out.reserve(value.length() + 16);
+  for (size_t i = 0; i < value.length(); ++i) {
+    const char c = value[i];
+    if ((c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') ||
+        c == '-' || c == '_' || c == '.' || c == '~') {
+      out += c;
+    } else {
+      char buf[4];
+      snprintf(buf, sizeof(buf), "%%%02X", (unsigned char)c);
+      out += buf;
+    }
+  }
+  return out;
+}
+
 String escapeHtmlAttr(const String& value) {
   String out;
   out.reserve(value.length() + 8);
@@ -62,13 +79,17 @@ bool ServicePortal::begin(const char* apName) {
 }
 
 void ServicePortal::registerRoutes() {
-  server_.on("/", HTTP_GET, [this]() { server_.send(200, "text/html", buildPage()); });
+  server_.on("/", HTTP_GET, [this]() {
+    int tab = server_.arg("tab").toInt();
+    if (tab < 1 || tab > 5) tab = 1;
+    const bool ok = server_.arg("ok") != "0";
+    server_.send(200, "text/html", buildPage(tab, ok, server_.arg("msg")));
+  });
 
   server_.on("/ap/save", HTTP_POST, [this]() {
     const String pin = server_.arg("ap_pin");
     if (!appPrefs_.saveApPin(pin)) {
-      server_.send(400, "text/html",
-                   resultPage("Blad", "PIN AP: wymagane 8-63 znaki.", true));
+      sendResult(1, false, "PIN AP: wymagane 8-63 znaki.");
       return;
     }
 
@@ -88,41 +109,41 @@ void ServicePortal::registerRoutes() {
     const String password = server_.arg("password");
 
     if (ssid.length() == 0) {
-      server_.send(400, "text/plain", "SSID wymagane");
+      sendResult(1, false, "SSID wymagane.");
       return;
     }
 
     if (appPrefs_.saveWifiCredentials(ssid, password)) {
-      server_.send(200, "text/html", resultPage("WiFi zapisane", "Dane sieci zapisane w pamieci.", true));
+      sendResult(1, true, "WiFi: dane sieci zapisane w pamieci.");
     } else {
-      server_.send(500, "text/html", resultPage("Blad", "Nie udalo sie zapisac WiFi.", true));
+      sendResult(1, false, "Nie udalo sie zapisac WiFi.");
     }
   });
 
   server_.on("/tara", HTTP_POST, [this]() {
     const String msg = actions_.saveTara();
-    server_.send(200, "text/html", resultPage("Tara", msg.c_str(), true));
+    sendResult(2, true, msg);
   });
 
   server_.on("/cal/empty", HTTP_POST, [this]() {
     const String msg = actions_.calibrateEmpty();
-    server_.send(200, "text/html", resultPage("Kalibracja", msg.c_str(), true));
+    sendResult(2, true, msg);
   });
 
   server_.on("/cal/weight", HTTP_POST, [this]() {
     const int grams = server_.arg("grams").toInt();
     const String msg = actions_.calibrateWithWeight(grams);
-    server_.send(200, "text/html", resultPage("Kalibracja", msg.c_str(), true));
+    sendResult(2, true, msg);
   });
 
   server_.on("/cal/hx711-reset", HTTP_POST, [this]() {
     const String msg = actions_.resetHx711Default();
-    server_.send(200, "text/html", resultPage("HX711", msg.c_str(), true));
+    sendResult(2, true, msg);
   });
 
   server_.on("/reset", HTTP_POST, [this]() {
     const String msg = actions_.resetAll();
-    server_.send(200, "text/html", resultPage("Reset", msg.c_str(), true));
+    sendResult(5, true, msg);
   });
 
   server_.on("/welcome/save", HTTP_POST, [this]() {
@@ -132,58 +153,51 @@ void ServicePortal::registerRoutes() {
     message.line3 = server_.arg("welcome_l3");
 
     if (appPrefs_.saveWelcomeMessage(message)) {
-      server_.send(200, "text/html",
-                   resultPage("Ekran powitalny", "Tekst zapisany w pamieci NVS. Widoczny po restarcie.", true));
+      sendResult(4, true, "Ekran powitalny zapisany. Widoczny po restarcie.");
     } else {
-      server_.send(500, "text/html",
-                   resultPage("Blad", "Nie udalo sie zapisac ekranu powitalnego.", true));
+      sendResult(4, false, "Nie udalo sie zapisac ekranu powitalnego.");
     }
   });
 
   server_.on("/endpoint/save", HTTP_POST, [this]() {
     const String endpoint = server_.arg("endpoint");
     if (appPrefs_.saveApiEndpoint(endpoint)) {
-      server_.send(200, "text/html",
-                   resultPage("Endpoint", "Adres URL zapisany w pamieci.", true));
+      sendResult(1, true, "Endpoint: adres URL zapisany.");
     } else {
-      server_.send(400, "text/html",
-                   resultPage("Blad", "Wymagany adres http:// lub https://", true));
+      sendResult(1, false, "Endpoint: wymagany adres http:// lub https://");
     }
   });
 
   server_.on("/ping/save", HTTP_POST, [this]() {
     const uint16_t interval = static_cast<uint16_t>(server_.arg("ping_interval").toInt());
     if (appPrefs_.savePingIntervalSec(interval)) {
-      server_.send(200, "text/html",
-                   resultPage("Ping", "Interwal pinga zapisany.", true));
+      sendResult(1, true, "Interwal pinga zapisany.");
     } else {
-      server_.send(400, "text/html",
-                   resultPage("Blad", "Interwal: 0 (wyl.) lub 5-3600 sekund.", true));
+      sendResult(1, false, "Interwal: 0 (wyl.) lub 5-3600 sekund.");
     }
   });
 
   server_.on("/token/save", HTTP_POST, [this]() {
     const String token = server_.arg("ws_token");
     if (appPrefs_.saveWsToken(token)) {
-      server_.send(200, "text/html",
-                   resultPage("Token", "Token zapisany. Aktywny po wyjsciu z trybu serwisowego.", true));
+      sendResult(1, true, "Token zapisany. Aktywny po wyjsciu z trybu serwisowego.");
     } else {
-      server_.send(400, "text/html", resultPage("Blad", "Token: maks. 64 znaki.", true));
+      sendResult(1, false, "Token: maks. 64 znaki.");
     }
   });
 
   server_.on("/endpoint/test", HTTP_POST, [this]() {
     if (wsTestFn_ == nullptr) {
-      server_.send(500, "text/html", resultPage("Test", "Niedostepny", true));
+      sendResult(1, false, "Test WS: niedostepny.");
       return;
     }
     const String msg = wsTestFn_();
-    server_.send(200, "text/html", resultPage("Test WS", msg.c_str(), true));
+    sendResult(1, msg.startsWith("Polaczono"), "Test WS: " + msg);
   });
 
   server_.on("/time/ntp", HTTP_POST, [this]() {
     const String msg = clockActions_.syncFromInternet();
-    server_.send(200, "text/html", resultPage("Czas z internetu", msg.c_str(), true));
+    sendResult(3, true, msg);
   });
 
   server_.on("/time/set", HTTP_POST, [this]() {
@@ -193,7 +207,7 @@ void ServicePortal::registerRoutes() {
     const int hour = server_.arg("hour").toInt();
     const int minute = server_.arg("minute").toInt();
     const String msg = clockActions_.setManual(year, month, day, hour, minute, 0);
-    server_.send(200, "text/html", resultPage("Ustawienie czasu", msg.c_str(), true));
+    sendResult(3, true, msg);
   });
 
   server_.on("/ota", HTTP_POST, [this]() {
@@ -250,6 +264,15 @@ void ServicePortal::redirectToPortal() {
   server_.sendHeader("Pragma", "no-cache");
   server_.sendHeader("Expires", "-1");
   server_.sendHeader("Location", redirectUrl, true);
+  server_.send(302, "text/plain", "");
+}
+
+void ServicePortal::sendResult(int tab, bool ok, const String& msg) {
+  String url = "/?tab=";
+  url += tab;
+  url += ok ? "&ok=1&msg=" : "&ok=0&msg=";
+  url += urlEncode(msg);
+  server_.sendHeader("Location", url, true);
   server_.send(302, "text/plain", "");
 }
 
@@ -310,6 +333,12 @@ static const char kSvcHead[] PROGMEM = R"html(<!doctype html>
   #t4:checked~.wrap #p4,
   #t5:checked~.wrap #p5{display:block}
 
+  /* --- toast po zapisie (parametry ?ok=&msg= w URL) --- */
+  .toast{margin:0 0 14px;padding:12px 14px;border-radius:12px;font-size:14px;
+    font-weight:500;line-height:1.4;border:1px solid}
+  .toast.ok{background:#ecfdf5;border-color:#a7f3d0;color:#065f46}
+  .toast.err{background:#fef2f2;border-color:#fecaca;color:#991b1b}
+
   /* --- karty --- */
   .card{background:#fff;border:1px solid #e4e4e7;border-radius:14px;padding:16px;
     margin-bottom:14px;box-shadow:0 1px 2px rgba(0,0,0,.03)}
@@ -361,12 +390,9 @@ static const char kSvcHead[] PROGMEM = R"html(<!doctype html>
     <p>WagaWezy &middot; konfiguracja urz&#261;dzenia</p>
   </div>
 
-  <input type="radio" name="tab" id="t1" checked>
-  <input type="radio" name="tab" id="t2">
-  <input type="radio" name="tab" id="t3">
-  <input type="radio" name="tab" id="t4">
-  <input type="radio" name="tab" id="t5">
+)html";
 
+static const char kSvcTabsbar[] PROGMEM = R"html(
   <div class="tabsbar">
     <div class="tabs">
       <label for="t1">Sie&#263;</label>
@@ -376,7 +402,9 @@ static const char kSvcHead[] PROGMEM = R"html(<!doctype html>
       <label for="t5">System</label>
     </div>
   </div>
+)html";
 
+static const char kSvcWrapA[] PROGMEM = R"html(
   <div class="wrap">
 
     <!-- ====== SIEC ====== -->
@@ -583,7 +611,7 @@ static const char kSvcTail[] PROGMEM = R"html("></label>
 </html>
 )html";
 
-String ServicePortal::buildPage() const {
+String ServicePortal::buildPage(int tab, bool ok, const String& msg) const {
   const int defaultCal = actions_.defaultCalWeightGrams();
   const String apPin = appPrefs_.loadApPin();
   const WelcomeMessage welcome = appPrefs_.loadWelcomeMessage();
@@ -595,6 +623,18 @@ String ServicePortal::buildPage() const {
   html.reserve(14336);
 
   html += FPSTR(kSvcHead);
+  for (int i = 1; i <= 5; ++i) {
+    html += "  <input type=\"radio\" name=\"tab\" id=\"t";
+    html += i;
+    html += (i == tab) ? "\" checked>\n" : "\">\n";
+  }
+  html += FPSTR(kSvcTabsbar);
+  if (msg.length() > 0) {
+    html += ok ? "  <div class=\"toast ok\">" : "  <div class=\"toast err\">";
+    html += escapeHtmlAttr(msg);
+    html += "</div>\n  <script>history.replaceState(null,'','/');</script>\n";
+  }
+  html += FPSTR(kSvcWrapA);
   html += apName_;
   html += FPSTR(kSvcApPinRow);
   html += escapeHtmlAttr(apPin);

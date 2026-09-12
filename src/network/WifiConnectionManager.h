@@ -22,6 +22,7 @@ class WifiConnectionManager {
  private:
   void reloadCredentials();
   void startConnect();
+  void announceName();
   WiFiMode_t desiredMode() const;
 
   AppPreferences* appPrefs_;
@@ -29,6 +30,7 @@ class WifiConnectionManager {
   bool enabled_;
   bool apModeActive_;
   bool connecting_;
+  bool nameAnnounced_;
   unsigned long lastCheckMs_;
   unsigned long connectStartedMs_;
   unsigned long nextReconnectMs_;

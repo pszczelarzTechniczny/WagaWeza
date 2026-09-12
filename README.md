@@ -2,7 +2,7 @@
 
 Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyświetla ją na ekranie OLED, utrzymuje stałe połączenie WebSocket z POS (POSeidon) i obsługuje aktualizacje firmware przez OTA z GitHub Releases.
 
-**Aktualna wersja firmware:** `1.4.1`
+**Aktualna wersja firmware:** `1.4.2`
 
 ---
 
@@ -39,6 +39,7 @@ Firmware dla wagi do węzy opartej na **ESP32**. Urządzenie mierzy masę, wyśw
 - **Aktualizacja OTA** z GitHub Releases (z detekcją zwisu pobierania — przerwanie po 10 s bez danych)
 - **Watchdog 30 s** — automatyczny restart przy zawieszeniu pętli lub OTA
 - Sygnalizacja dźwiękowa (buzzer)
+- **Nazwa w sieci** — hostname DHCP `WagaWezy`, mDNS `wagawezy.local`, NetBIOS `WAGAWEZY` (widoczna w skanerach LAN)
 - Zapis konfiguracji w pamięci NVS (Preferences)
 
 ---
@@ -242,6 +243,8 @@ Odczyt HX711 jest filtrowany (mediana z 3 próbek + adaptacyjna EMA), a drobny d
 | Reset | Usunięcie kalibracji i tary z NVS |
 | Aktualizacja OTA | Pobranie nowego firmware z GitHub |
 | Wyjście | Powrót do trybu normalnego |
+
+Każdy zapis/akcja wraca na stronę portalu do tej samej zakładki i pokazuje u góry komunikat (zielony = OK, czerwony = błąd). Wyjątek: OTA i Wyjście — portal wtedy gaśnie.
 
 ### Zdalna aktualizacja z POS
 

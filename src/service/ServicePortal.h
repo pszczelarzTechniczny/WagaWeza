@@ -34,8 +34,9 @@ class ServicePortal {
   void restartAp();
   void handleCaptiveProbe();
   void redirectToPortal();
-  String buildPage() const;
+  String buildPage(int tab, bool ok, const String& msg) const;
   String resultPage(const char* title, const char* message, bool backLink) const;
+  void sendResult(int tab, bool ok, const String& msg);
 
   ScaleServiceActions& actions_;
   ClockServiceActions& clockActions_;
